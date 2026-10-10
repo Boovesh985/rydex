@@ -9,17 +9,26 @@ React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafk
 
 Requires Docker and JDK 21. Maven is not required; use the wrapper.
 
-```bash
+**Windows (PowerShell)**
+```powershell
 # 1. Infrastructure: Postgres+PostGIS, Redis, Kafka (topics are created automatically)
 docker compose -f infra/docker-compose.yml up -d
 
 # 2. Build and test every backend module (integration tests use Testcontainers)
+.\mvnw.cmd verify
+
+# 3. Stable JWT signing key (optional; needs Git Bash). Without it an ephemeral key is used.
+& "C:\Program Files\Git\bin\bash.exe" infra/scripts/gen-jwt-keys.sh
+
+# 4. Run ride-service, then open http://localhost:8081/swagger-ui
+cd services\ride-service; ..\..\mvnw.cmd spring-boot:run
+```
+
+**macOS / Linux / Git Bash**
+```bash
+docker compose -f infra/docker-compose.yml up -d
 ./mvnw verify
-
-# 3. (optional) stable JWT signing key, otherwise an ephemeral one is used
 bash infra/scripts/gen-jwt-keys.sh
-
-# 4. Run ride-service and open Swagger UI at http://localhost:8081/swagger-ui
 cd services/ride-service && ../../mvnw spring-boot:run
 ```
 
