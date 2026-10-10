@@ -30,7 +30,7 @@
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <springdoc.version>3.1.1</springdoc.version>
-        <jjwt.version>0.13.0</jjwt.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
         <jacoco.version>0.8.15</jacoco.version>
         <!-- JaCoCo's prepare-agent fills this in; empty default keeps @{argLine} valid when it is skipped. -->
         <argLine></argLine>
@@ -44,24 +44,14 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-spring-boot4</artifactId>
+                <version>${resilience4j.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt-api</artifactId>
-                <version>${jjwt.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt-impl</artifactId>
-                <version>${jjwt.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt-jackson</artifactId>
-                <version>${jjwt.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -76,6 +66,14 @@
                         <!-- NIO pipes on Windows use Unix-domain sockets in %TEMP%; a user profile path with
                              spaces/8.3 names makes Tomcat fail with "Unable to establish loopback connection". -->
                         <argLine>@{argLine} -Djdk.net.unixdomain.tmpdir=${project.build.directory}</argLine>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <!-- same Windows loopback-socket workaround for `mvnw spring-boot:run` -->
+                        <jvmArguments>-Djdk.net.unixdomain.tmpdir=${project.build.directory}</jvmArguments>
                     </configuration>
                 </plugin>
             </plugins>

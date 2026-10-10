@@ -1,6 +1,7 @@
 server:
   port: ${PORT:8081}
   shutdown: graceful
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   application:
@@ -8,6 +9,30 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rydex}
+    username: ${DB_USER:ride_svc}
+    password: ${DB_PASSWORD:ride_local_pw}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      # each service lives in its own schema (ADR 0004); PostGIS types are in public
+      connection-init-sql: SET search_path TO ride, public
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    schemas: ride
+    default-schema: ride
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration,classpath:db/seed}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
 
 management:
   endpoints:
@@ -18,3 +43,63 @@ management:
     health:
       probes:
         enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+    persist-authorization: true
+  api-docs:
+    path: /v3/api-docs
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 20
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+    instances:
+      osrm:
+        base-config: default
+      nominatim:
+        base-config: default
+
+rydex:
+  jwt:
+    issuer: ${JWT_ISSUER:rydex}
+    access-token-ttl: 15m
+    refresh-token-ttl: 14d
+    private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:../../infra/keys/jwt-private.pem}
+    public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:../../infra/keys/jwt-public.pem}
+  otp:
+    secret: ${OTP_SECRET:dev-only-otp-secret-change-me-in-prod}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  geo:
+    osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
+    nominatim-base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
+    user-agent: ${GEO_USER_AGENT:Rydex/0.1 (portfolio project; +https://github.com/Boovesh985/rydex)}
+    country-codes: in
+    connect-timeout: 5s
+    read-timeout: 8s
+    route-cache-ttl: 1h
+    places-cache-ttl: 24h
+    nominatim-interval: 1100ms
+    fallback-speed-kmh: 22
+    road-factor: 1.35
+  fares:
+    max-surge: 2.5
+    tariffs:
+      ECONOMY: { base: 40, per-km: 12, per-min: 1.5, minimum: 60 }
+      COMFORT: { base: 60, per-km: 16, per-min: 2.0, minimum: 90 }
+      XL:      { base: 90, per-km: 22, per-min: 2.5, minimum: 140 }
+  rate-limits:
+    enabled: true
+    per-minute:
+      auth: 20
+      places: 60
+      estimate: 30
+      book: 10
+      default: 300

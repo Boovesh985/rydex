@@ -3,22 +3,23 @@ package com.rydex.ride;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.web.client.RestClient;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class RideServiceApplicationTests {
-
-    @LocalServerPort
-    int port;
+class RideServiceApplicationTests extends IntegrationTest {
 
     @Test
     void healthEndpointReportsUp() {
-        String body = RestClient.create("http://localhost:" + port)
-                .get().uri("/actuator/health")
-                .retrieve().body(String.class);
+        var res = api().get("/actuator/health", null);
 
-        assertThat(body).contains("\"status\":\"UP\"");
+        assertThat(res.getStatusCode().value()).isEqualTo(200);
+        assertThat(res.getBody().path("status").asString()).isEqualTo("UP");
+    }
+
+    @Test
+    void openApiDocumentIsPublished() {
+        var res = api().get("/v3/api-docs", null);
+
+        assertThat(res.getStatusCode().value()).isEqualTo(200);
+        assertThat(res.getBody().path("paths").has("/api/rides")).isTrue();
+        assertThat(res.getBody().path("paths").has("/api/auth/login")).isTrue();
     }
 }

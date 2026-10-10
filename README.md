@@ -3,7 +3,7 @@
 Uber-style ride hailing with live driver tracking and AI ride suggestions, built on free tiers only.
 React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafka · WebSockets · FastAPI.
 
-> 🚧 Work in progress. Phase 0 (scaffold) is done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
+> 🚧 Work in progress. Phases 0–1 (scaffold, ride-service) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
 
 ## Quick start
 
@@ -13,9 +13,17 @@ Requires Docker and JDK 21. Maven is not required; use the wrapper.
 # 1. Infrastructure: Postgres+PostGIS, Redis, Kafka (topics are created automatically)
 docker compose -f infra/docker-compose.yml up -d
 
-# 2. Build and test every backend module
+# 2. Build and test every backend module (integration tests use Testcontainers)
 ./mvnw verify
+
+# 3. (optional) stable JWT signing key, otherwise an ephemeral one is used
+bash infra/scripts/gen-jwt-keys.sh
+
+# 4. Run ride-service and open Swagger UI at http://localhost:8081/swagger-ui
+cd services/ride-service && ../../mvnw spring-boot:run
 ```
+
+Demo accounts (seeded): `admin@rydex.dev`, `rider1..5@rydex.dev`, `driver01..50@rydex.dev`, all with password `Rydex@123`.
 
 | Component | Address (local) |
 |---|---|

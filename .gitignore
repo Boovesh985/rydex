@@ -3,7 +3,7 @@ target/
 build/
 dist/
 *.class
-.tmp-*/
+.tmp-*
 
 # IDE
 .idea/
@@ -28,3 +28,6 @@ coverage/
 
 # Local tooling
 .claude/settings.local.json
+
+# JWT signing keys (generate with infra/scripts/gen-jwt-keys.sh)
+infra/keys/

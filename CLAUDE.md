@@ -20,6 +20,11 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 - Build + tests: `./mvnw -B -ntp verify` (Windows: `.\mvnw.cmd`)
 - Infra: `docker compose -f infra/docker-compose.yml up -d` (Postgres+PostGIS :5432, Redis :6379, Kafka :9092 — all on 127.0.0.1)
 
+## Gotchas
+- Integration tests reuse the local image `ghcr.io/boovesh985/rydex-postgres:16-3` (built by compose); they build it from `infra/postgres` only if missing. Containers are JVM singletons + `@DynamicPropertySource` — NOT `@ServiceConnection` (Spring 7 context pausing restarts container beans on new ports).
+- Never push to GitHub; give the user commands instead.
+- Jackson 3 (`tools.jackson.*`): `JsonNode.asString()` not `asText()`.
+
 ## Layout
 - `libs/common-events` — `EventEnvelope`, `EventType`, `Topics`
 - `services/{ride,driver,tracking,payment}-service` — ports 8081/8082/8083/8084
@@ -27,3 +32,4 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 
 ## Progress
 - [x] Phase 0 — scaffold, infra compose, CI skeleton
+- [x] Phase 1 — ride-service: auth (RS256/JWKS, rotating refresh), places/route proxy, estimate, booking, state machine, outbox rows, OpenAPI

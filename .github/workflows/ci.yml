@@ -23,6 +23,15 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      - uses: docker/setup-buildx-action@v4
+      - name: Build PostGIS test image (used by Testcontainers)
+        uses: docker/build-push-action@v7
+        with:
+          context: infra/postgres
+          load: true
+          tags: ghcr.io/boovesh985/rydex-postgres:16-3
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,mode=max,scope=postgres
       - name: Build and test
         run: ./mvnw -B -ntp verify
       - name: Upload coverage reports
