@@ -1,6 +1,7 @@
 server:
   port: ${PORT:8082}
   shutdown: graceful
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   application:
@@ -8,6 +9,30 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rydex}
+    username: ${DB_USER:driver_svc}
+    password: ${DB_PASSWORD:driver_local_pw}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      # each service lives in its own schema (ADR 0004)
+      connection-init-sql: SET search_path TO driver, public
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    schemas: driver
+    default-schema: driver
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration,classpath:db/seed}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
 
 management:
   endpoints:
@@ -18,3 +43,51 @@ management:
     health:
       probes:
         enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+    persist-authorization: true
+  api-docs:
+    path: /v3/api-docs
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      osrm-table:
+        sliding-window-size: 20
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+
+rydex:
+  jwt:
+    issuer: ${JWT_ISSUER:rydex}
+    # ride-service issues tokens and publishes its public key here (ADR 0006)
+    jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  routing:
+    osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
+    user-agent: ${GEO_USER_AGENT:Rydex/0.1 (portfolio project; +https://github.com/Boovesh985/rydex)}
+    connect-timeout: 3s
+    read-timeout: 4s
+    fallback-speed-kmh: 22
+    road-factor: 1.35
+  presence:
+    # a driver silent for longer is removed from the GEO sets until the next heartbeat
+    stale-after: 30s
+    reap-interval: 5s
+    min-location-interval: 500ms
+  matching:
+    search-radii-km: [3, 5, 8]
+    candidates-per-search: 10
+    offer-timeout: 15s
+    driver-lock-ttl: 20s
+    max-attempts: 5
+    # how long to keep looking when nobody is nearby before giving up (NO_DRIVER_FOUND)
+    search-timeout: 90s
+    retry-interval: 5s
+    poll-interval: 500ms
+    lease: 30s

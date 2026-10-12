@@ -3,7 +3,7 @@
 Uber-style ride hailing with live driver tracking and AI ride suggestions, built on free tiers only.
 React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafka · WebSockets · FastAPI.
 
-> 🚧 Work in progress. Phases 0–1 (scaffold, ride-service) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
+> 🚧 Work in progress. Phases 0–2 (scaffold, ride-service, driver-service) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
 
 ## Quick start
 
@@ -22,6 +22,9 @@ docker compose -f infra/docker-compose.yml up -d
 
 # 4. Run ride-service, then open http://localhost:8081/swagger-ui
 cd services\ride-service; ..\..\mvnw.cmd spring-boot:run
+
+# 5. In a second terminal, run driver-service (http://localhost:8082/swagger-ui)
+cd services\driver-service; ..\..\mvnw.cmd spring-boot:run
 ```
 
 **macOS / Linux / Git Bash**
@@ -30,9 +33,14 @@ docker compose -f infra/docker-compose.yml up -d
 ./mvnw verify
 bash infra/scripts/gen-jwt-keys.sh
 cd services/ride-service && ../../mvnw spring-boot:run
+cd services/driver-service && ../../mvnw spring-boot:run   # second terminal
 ```
 
 Demo accounts (seeded): `admin@rydex.dev`, `rider1..5@rydex.dev`, `driver01..50@rydex.dev`, all with password `Rydex@123`.
+Drivers 01–30 drive ECONOMY, 31–42 COMFORT and 43–50 XL. All of them start offline.
+
+Every service trusts the same token, so sign in once on ride-service (`POST /api/auth/login`) and paste the
+`accessToken` into **Authorize** on any Swagger page.
 
 | Component | Address (local) |
 |---|---|

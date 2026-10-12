@@ -15,9 +15,15 @@ public final class RedisKeys {
     private RedisKeys() {
     }
 
+    /** Prefix of {@link #driversGeo}; Lua scripts that pick the set at run time need it. */
+    public static final String DRIVERS_GEO_PREFIX = "geo:drivers:";
+
+    /** Prefix of {@link #supply}. */
+    public static final String SUPPLY_PREFIX = "supply:";
+
     /** GEO set of available drivers of one ride type. */
     public static String driversGeo(RideType type) {
-        return "geo:drivers:" + type.name();
+        return DRIVERS_GEO_PREFIX + type.name();
     }
 
     /** ZSET of driver heartbeats, score = epoch millis. */
@@ -27,6 +33,16 @@ public final class RedisKeys {
 
     public static String driverLocation(UUID driverId) {
         return "driver:" + driverId + ":loc";
+    }
+
+    /** HASH {status, type, cell}: the availability projection driver-service keeps in Redis. */
+    public static String driverState(UUID driverId) {
+        return "driver:" + driverId + ":state";
+    }
+
+    /** Short-lived marker that throttles a driver's location updates. */
+    public static String driverLocationThrottle(UUID driverId) {
+        return "ratelimit:" + driverId + ":location";
     }
 
     public static String driverLock(UUID driverId) {
@@ -56,7 +72,7 @@ public final class RedisKeys {
 
     /** SET of available driver ids per geohash-6 cell. */
     public static String supply(String geohash6) {
-        return "supply:" + geohash6;
+        return SUPPLY_PREFIX + geohash6;
     }
 
     public static String routeCache(String hash) {
