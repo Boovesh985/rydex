@@ -27,6 +27,12 @@ cd services\ride-service; ..\..\mvnw.cmd spring-boot:run
 cd services\driver-service; ..\..\mvnw.cmd spring-boot:run
 ```
 
+**Check that it works.** With the infrastructure and both services running, this tests everything built so far
+(infrastructure, ride-service, driver-service) and prints PASS/FAIL per check:
+```powershell
+powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
+```
+
 **macOS / Linux / Git Bash**
 ```bash
 docker compose -f infra/docker-compose.yml up -d
