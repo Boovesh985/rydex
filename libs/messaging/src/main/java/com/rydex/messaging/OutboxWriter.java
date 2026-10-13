@@ -1,8 +1,8 @@
-package com.rydex.ride.outbox;
+package com.rydex.messaging;
 
 import com.rydex.events.EventEnvelope;
+import java.sql.Timestamp;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -10,8 +10,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Appends events to the transactional outbox. Must run inside the transaction that
  * changes the aggregate, so the event exists if and only if the change committed.
+ * {@link OutboxRelay} publishes the rows to Kafka.
  */
-@Component
 public class OutboxWriter {
 
     private final JdbcClient jdbc;
@@ -34,7 +34,7 @@ public class OutboxWriter {
                 .param("key", event.key())
                 .param("type", event.eventType().name())
                 .param("payload", json.writeValueAsString(event))
-                .param("createdAt", java.sql.Timestamp.from(event.occurredAt()))
+                .param("createdAt", Timestamp.from(event.occurredAt()))
                 .update();
     }
 }

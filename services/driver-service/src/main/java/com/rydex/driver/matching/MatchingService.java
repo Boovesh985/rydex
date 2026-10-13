@@ -9,7 +9,7 @@ import com.rydex.driver.matching.MatchOffer.Outcome;
 import com.rydex.driver.matching.MatchingDtos.AssignmentView;
 import com.rydex.driver.matching.MatchingDtos.JobView;
 import com.rydex.driver.matching.MatchingDtos.OfferView;
-import com.rydex.driver.outbox.OutboxWriter;
+import com.rydex.messaging.OutboxWriter;
 import com.rydex.driver.presence.PresenceStore;
 import com.rydex.driver.security.AuthUser;
 import com.rydex.driver.support.AfterCommit;

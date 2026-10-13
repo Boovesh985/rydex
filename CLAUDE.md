@@ -24,14 +24,19 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 - Integration tests reuse the local image `ghcr.io/boovesh985/rydex-postgres:16-3` (built by compose); they build it from `infra/postgres` only if missing. Containers are JVM singletons + `@DynamicPropertySource` — NOT `@ServiceConnection` (Spring 7 context pausing restarts container beans on new ports).
 - Claude commits and pushes to origin itself. NEVER add Claude attribution (no Co-Authored-By, no "Generated with Claude Code"): the user must be the only contributor.
 - Jackson 3 (`tools.jackson.*`): `JsonNode.asString()` not `asText()`.
+- `@KafkaListener(id=...)` needs `idIsGroup = false`, otherwise the id replaces the consumer group.
+- `mvnw spring-boot:run` inside a module resolves `libs/*` from `~/.m2`: run `./mvnw install -DskipTests -pl libs/common-events,libs/messaging` after changing them.
+- Manual end-to-end check: `infra/scripts/smoke-test.ps1` (also run by the CI `e2e` job).
 
 ## Layout
 - `libs/common-events` — `EventEnvelope`, `EventType`, `Topics`
 - `services/{ride,driver,tracking,payment}-service` — ports 8081/8082/8083/8084
-- driver-service matching entry points (`MatchingService.onRideRequested/onRideCancelled/onRideCompleted`) are plain methods; Phase 3 wires them to Kafka consumers.
+- `libs/messaging` — `@EnableMessaging`: `OutboxWriter`, `OutboxRelay`, `ProcessedEvents`, `EventCodec`, DLT error handler (ADR 0009). Each service needs `outbox` + `processed_events` tables.
+- Event flow: ride-service → RIDE_REQUESTED/CANCELLED/COMPLETED → driver-service (`events/RideLifecycleHandler`); driver-service → DRIVER_ASSIGNED/NO_DRIVER_FOUND → ride-service (`events/MatchingOutcomeHandler`).
 - DB: database `rydex`, schema + role per service (`ride`/`ride_svc`, …). See ADR 0004.
 
 ## Progress
 - [x] Phase 0 — scaffold, infra compose, CI skeleton
 - [x] Phase 1 — ride-service: auth (RS256/JWKS, rotating refresh), places/route proxy, estimate, booking, state machine, outbox rows, OpenAPI
 - [x] Phase 2 — driver-service: profiles, availability (Redis GEO + Lua), geohash/radius search, OSRM ETA ranking, 15 s offers with driver locks, leased matching scheduler, admin grid (ADR 0008)
+- [x] Phase 3 — Kafka: libs/messaging outbox relay, idempotent consumers, retries + DLT; ride ⇄ driver event flow; CI e2e job (ADR 0009)

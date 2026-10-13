@@ -5,7 +5,7 @@ import com.rydex.common.geo.GeoPoint;
 import com.rydex.events.EventEnvelope;
 import com.rydex.events.EventType;
 import com.rydex.events.RidePayload;
-import com.rydex.ride.outbox.OutboxWriter;
+import com.rydex.messaging.OutboxWriter;
 import com.rydex.ride.pricing.MarketplaceStore;
 import com.rydex.ride.ride.RideDtos.BookRideRequest;
 import com.rydex.ride.ride.RideDtos.PageView;

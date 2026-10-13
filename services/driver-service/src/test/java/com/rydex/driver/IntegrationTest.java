@@ -29,12 +29,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.images.builder.ImageFromDockerfile;
+import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Boots driver-service against real PostGIS and Redis containers, with tokens signed by
+ * Boots driver-service against real PostGIS, Redis and Kafka containers, with tokens signed by
  * {@link TestTokens} and the OSRM table service mocked (default: 8 m/s straight-line).
  *
  * <p>Timings are shortened so whole matching sequences run in seconds: offers expire after
@@ -53,7 +54,10 @@ import tools.jackson.databind.JsonNode;
                 "rydex.matching.poll-interval=100ms",
                 "rydex.matching.lease=10s",
                 // tests call PresenceReaper.reap() themselves
-                "rydex.presence.reap-interval=1h"
+                "rydex.presence.reap-interval=1h",
+                "rydex.messaging.create-topics=true",
+                "rydex.messaging.outbox.poll-interval=100ms",
+                "rydex.messaging.retry.initial-interval=100ms"
         })
 public abstract class IntegrationTest {
 
@@ -67,9 +71,12 @@ public abstract class IntegrationTest {
 
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
 
+    static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.3.1");
+
     static {
         POSTGRES.start();
         REDIS.start();
+        KAFKA.start();
     }
 
     /** The production PostGIS image, reused when present locally, otherwise built from infra/postgres. */
@@ -92,6 +99,11 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
+    }
+
+    protected static KafkaProbe kafka() {
+        return new KafkaProbe(KAFKA.getBootstrapServers());
     }
 
     @MockitoBean

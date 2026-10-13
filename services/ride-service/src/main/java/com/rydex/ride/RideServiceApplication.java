@@ -1,5 +1,6 @@
 package com.rydex.ride;
 
+import com.rydex.messaging.EnableMessaging;
 import java.time.Clock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -7,6 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication
+@EnableMessaging
 @ConfigurationPropertiesScan
 public class RideServiceApplication {
 

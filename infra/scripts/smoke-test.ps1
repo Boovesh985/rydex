@@ -1,8 +1,10 @@
-# Rydex smoke test (Windows PowerShell 5.1+). Checks everything built so far against the
-# running local stack:
+# Rydex smoke test (Windows PowerShell 5.1+ or PowerShell 7). Checks everything built so far
+# against the running local stack:
 #   Phase 0  infra containers + Kafka topics
 #   Phase 1  ride-service: login, places, estimate, booking, idempotency, cancel
 #   Phase 2  driver-service: driver profile, go online, grid, candidate ranking, roles
+#   Phase 3  a full ride across services over Kafka: book -> offer -> accept -> assigned ->
+#            arrived -> start (OTP) -> complete -> driver free again; and a cancelled offer
 #
 # Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081)
 # and driver-service (:8082) running (see README). Usage, from the repo root:
@@ -37,6 +39,8 @@ function Api([string]$method, [string]$url, [string]$token = $null, $body = $nul
     $h = @{} + $headers
     if ($token) { $h["Authorization"] = "Bearer $token" }
     $req = @{ Method = $method; Uri = $url; Headers = $h; UseBasicParsing = $true; TimeoutSec = 30 }
+    # PowerShell 7 throws a different exception type on 4xx/5xx; ask it not to throw at all
+    if ($PSVersionTable.PSVersion.Major -ge 7) { $req["SkipHttpErrorCheck"] = $true }
     if ($null -ne $body) {
         $req["ContentType"] = "application/json"
         $req["Body"] = [System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6))
@@ -47,7 +51,7 @@ function Api([string]$method, [string]$url, [string]$token = $null, $body = $nul
         # PowerShell 5.1 hands back bytes for content types it does not know (e.g. actuator's vnd.*+json)
         if ($content -is [byte[]]) { $content = [System.Text.Encoding]::UTF8.GetString($content) }
         $parsed = $null
-        if ($content) { $parsed = $content | ConvertFrom-Json }
+        if ($content) { try { $parsed = $content | ConvertFrom-Json } catch { } }
         return @{ Status = [int]$res.StatusCode; Body = $parsed; Headers = $res.Headers }
     } catch [System.Net.WebException] {
         $r = $_.Exception.Response
@@ -57,6 +61,16 @@ function Api([string]$method, [string]$url, [string]$token = $null, $body = $nul
         if ($text) { try { $parsed = $text | ConvertFrom-Json } catch { } }
         return @{ Status = [int]$r.StatusCode; Body = $parsed; Headers = $r.Headers }
     }
+}
+
+# Polls $probe (a script block returning $true when done) every 500 ms for up to $seconds.
+function WaitFor([int]$seconds, [scriptblock]$probe) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        if (& $probe) { return $true }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
 }
 
 function Login([string]$email) {
@@ -168,12 +182,65 @@ $xl = Api GET "$DriverUrl/api/admin/matching/candidates?lat=13.0827&lng=80.2707&
 Check "an ECONOMY driver is not offered XL rides" (-not (@($xl.Body) | Where-Object { $_.driverId -eq $profile.Body.id }))
 
 $offer = Api GET "$DriverUrl/api/drivers/me/offer" $driverToken
-Check "no offer yet (offers arrive once Kafka is wired in, Phase 3)" ($offer.Status -eq 204) "HTTP $($offer.Status)"
+Check "no offer while nobody is booking" ($offer.Status -eq 204) "HTTP $($offer.Status)"
 
 $offline = Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" }
 $after = Api GET "$DriverUrl/api/admin/matching/candidates?lat=13.0827&lng=80.2707&rideType=ECONOMY" $admin
 Check "after going offline driver01 is no longer a candidate" ($offline.Body.status -eq "OFFLINE" -and -not (@($after.Body) | Where-Object { $_.driverId -eq $profile.Body.id }))
 Check "driver-service Swagger UI is up" ((Api GET "$DriverUrl/v3/api-docs").Status -eq 200)
+
+# ---------------------------------------------------------------- Phase 3
+Section "Phase 3 - a full ride over Kafka"
+# driver01 waits 50 m from the pickup, so the matcher picks them
+$online = Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "AVAILABLE"; lat = 13.0831; lng = 80.2707 }
+Check "driver01 is online next to the pickup" ($online.Body.searchable -eq $true)
+
+$book = Api POST "$RideUrl/api/rides" $rider @{ pickup = $center; drop = $airport; rideType = "ECONOMY" } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
+$rideId = $book.Body.id
+$otp = $book.Body.otp
+Check "rider1 books an ECONOMY ride" ($book.Status -eq 201) "ride $rideId"
+
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
+$gotOffer = WaitFor 30 { $o = Api GET "$DriverUrl/api/drivers/me/offer" $driverToken; $o.Status -eq 200 -and $o.Body.rideId -eq $rideId }
+Check "RIDE_REQUESTED reaches driver-service and driver01 gets the offer" $gotOffer ("after {0:N1} s" -f $watch.Elapsed.TotalSeconds)
+
+$accept = Api POST "$DriverUrl/api/drivers/me/offers/$rideId/accept" $driverToken
+Check "driver01 accepts" ($accept.Status -eq 200) "HTTP $($accept.Status)"
+
+$watch.Restart()
+$assigned = WaitFor 15 { $r = Api GET "$RideUrl/api/rides/$rideId" $rider; $r.Body.status -eq "DRIVER_ASSIGNED" }
+$ride = (Api GET "$RideUrl/api/rides/$rideId" $rider).Body
+Check "DRIVER_ASSIGNED reaches ride-service: the rider sees driver01" ($assigned -and $ride.driverId -eq $profile.Body.id) ("after {0:N1} s" -f $watch.Elapsed.TotalSeconds)
+
+$arrived = Api POST "$RideUrl/api/rides/$rideId/arrived" $driverToken
+Check "driver01 marks arrival" ($arrived.Body.status -eq "DRIVER_ARRIVED")
+$wrongOtp = if ($otp -eq "0000") { "1111" } else { "0000" }
+Check "a wrong OTP does not start the trip" ((Api POST "$RideUrl/api/rides/$rideId/start" $driverToken @{ otp = $wrongOtp }).Status -eq 422)
+$started = Api POST "$RideUrl/api/rides/$rideId/start" $driverToken @{ otp = $otp }
+Check "the rider's OTP starts the trip" ($started.Body.status -eq "IN_PROGRESS")
+$completed = Api POST "$RideUrl/api/rides/$rideId/complete" $driverToken
+Check "driver01 completes the trip" ($completed.Body.status -eq "COMPLETED") "fare Rs $($completed.Body.finalFare)"
+
+$watch.Restart()
+$freed = WaitFor 15 { (Api GET "$DriverUrl/api/drivers/me" $driverToken).Body.status -eq "AVAILABLE" }
+Check "RIDE_COMPLETED reaches driver-service: driver01 is AVAILABLE again" $freed ("after {0:N1} s" -f $watch.Elapsed.TotalSeconds)
+$final = (Api GET "$RideUrl/api/rides/$rideId" $rider).Body
+$timeline = @($final.timeline | ForEach-Object { $_.to })
+Check "the ride's timeline has every step" (($timeline -join ",") -eq "REQUESTED,DRIVER_ASSIGNED,DRIVER_ARRIVED,IN_PROGRESS,COMPLETED") ($timeline -join " > ")
+
+# cancellation while the offer is open
+Api POST "$DriverUrl/api/drivers/me/location" $driverToken @{ lat = 13.0831; lng = 80.2707 } | Out-Null
+$book2 = Api POST "$RideUrl/api/rides" $rider @{ pickup = $center; drop = $airport; rideType = "ECONOMY" } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
+$ride2 = $book2.Body.id
+$gotOffer2 = WaitFor 30 { $o = Api GET "$DriverUrl/api/drivers/me/offer" $driverToken; $o.Status -eq 200 -and $o.Body.rideId -eq $ride2 }
+Check "a second booking is offered to driver01" $gotOffer2
+Api POST "$RideUrl/api/rides/$ride2/cancel" $rider @{ reason = "smoke test: changed plans" } | Out-Null
+$withdrawn = WaitFor 15 { (Api GET "$DriverUrl/api/drivers/me/offer" $driverToken).Status -eq 204 }
+Check "RIDE_CANCELLED reaches driver-service: the offer is withdrawn" $withdrawn
+$job = Api GET "$DriverUrl/api/admin/matching/$ride2" $admin
+Check "the matching job is CANCELLED" ($job.Body.status -eq "CANCELLED") "offers: $(@($job.Body.offers).Count)"
+
+Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
 
 # ---------------------------------------------------------------- summary
 Write-Host ""

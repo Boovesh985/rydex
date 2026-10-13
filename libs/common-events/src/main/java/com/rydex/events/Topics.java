@@ -2,7 +2,8 @@ package com.rydex.events;
 
 /**
  * Kafka topic names. Topics are created by the {@code kafka-init} container
- * (see infra/kafka/create-topics.sh); auto-creation is disabled on the broker.
+ * (see infra/kafka/create-topics.sh); auto-creation is disabled on the broker. Tests create
+ * the same topics through {@code rydex.messaging.create-topics=true}.
  */
 public final class Topics {
 
@@ -10,7 +11,7 @@ public final class Topics {
     public static final String DRIVER_LOCATION = "driver.location";
     public static final String PAYMENT_EVENTS = "payment.events";
 
-    /** Suffix used by Spring Kafka's DeadLetterPublishingRecoverer. */
+    /** Dead-letter topic suffix; the messaging lib's DeadLetterPublishingRecoverer is configured with it. */
     public static final String DLT_SUFFIX = ".DLT";
 
     private Topics() {

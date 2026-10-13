@@ -3,7 +3,7 @@
 Uber-style ride hailing with live driver tracking and AI ride suggestions, built on free tiers only.
 React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafka · WebSockets · FastAPI.
 
-> 🚧 Work in progress. Phases 0–2 (scaffold, ride-service, driver-service) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
+> 🚧 Work in progress. Phases 0–3 (scaffold, ride-service, driver-service, Kafka event flow) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
 
 ## Quick start
 
@@ -28,7 +28,8 @@ cd services\driver-service; ..\..\mvnw.cmd spring-boot:run
 ```
 
 **Check that it works.** With the infrastructure and both services running, this tests everything built so far
-(infrastructure, ride-service, driver-service) and prints PASS/FAIL per check:
+and prints PASS/FAIL per check. It ends with a full ride across both services over Kafka (book, offer, accept,
+arrive, OTP start, complete), the same run CI does on every push:
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
 ```
@@ -58,7 +59,8 @@ Every service trusts the same token, so sign in once on ride-service (`POST /api
 ## Repository layout
 
 ```
-libs/common-events/   shared event envelope, event types, topic names
+libs/common-events/   shared event envelope, event types, topic names, geohash, Redis keys
+libs/messaging/       outbox relay, idempotent consumers, retries + dead-letter topics (@EnableMessaging)
 services/             ride, driver, tracking, payment (Spring Boot)
 contracts/            JSON Schemas for Kafka events
 infra/                docker compose, PostGIS image, Kafka topic script
@@ -66,4 +68,4 @@ docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9).

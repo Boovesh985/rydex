@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rydex.dev/contracts/events/ride-payload.schema.json",
+  "title": "RidePayload",
+  "description": "Payload of every ride.events message (RIDE_REQUESTED, DRIVER_ASSIGNED, NO_DRIVER_FOUND, DRIVER_ARRIVED, RIDE_STARTED, RIDE_COMPLETED, RIDE_CANCELLED). Mirrors com.rydex.events.RidePayload. Fields that do not apply to an event type are null. Consumers must ignore unknown fields.",
+  "type": "object",
+  "properties": {
+    "riderId": { "type": ["string", "null"], "format": "uuid" },
+    "driverId": {
+      "type": ["string", "null"], "format": "uuid",
+      "description": "Set from DRIVER_ASSIGNED onwards."
+    },
+    "rideType": { "enum": ["ECONOMY", "COMFORT", "XL", null] },
+    "pickup": { "$ref": "#/$defs/geoPoint" },
+    "drop": { "$ref": "#/$defs/geoPoint" },
+    "fare": {
+      "type": ["number", "null"],
+      "description": "INR. Estimated fare, or the final fare on RIDE_COMPLETED."
+    },
+    "estDistanceM": { "type": ["integer", "null"], "minimum": 0 },
+    "estDurationS": { "type": ["integer", "null"], "minimum": 0 },
+    "reason": {
+      "type": ["string", "null"],
+      "description": "Cancel reason (RIDE_CANCELLED) or why matching gave up (NO_DRIVER_FOUND)."
+    }
+  },
+  "$defs": {
+    "geoPoint": {
+      "type": ["object", "null"],
+      "required": ["lat", "lng"],
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+        "address": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "examples": [
+    {
+      "riderId": "00000000-0000-4000-8000-000000000101",
+      "driverId": "00000000-0000-4000-8000-000000000201",
+      "rideType": "ECONOMY",
+      "pickup": { "lat": 13.0827, "lng": 80.2707, "address": "Chennai Central" },
+      "drop": { "lat": 12.9941, "lng": 80.1709, "address": "Chennai Airport" },
+      "fare": 339.00,
+      "estDistanceM": 22111,
+      "estDurationS": 1359,
+      "reason": null
+    }
+  ]
+}

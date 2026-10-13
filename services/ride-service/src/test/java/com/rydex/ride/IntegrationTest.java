@@ -14,11 +14,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.images.builder.ImageFromDockerfile;
+import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Boots the whole service against real PostGIS and Redis containers. External HTTP
+ * Boots the whole service against real PostGIS, Redis and Kafka containers. External HTTP
  * dependencies (OSRM, Nominatim) are mocked.
  *
  * <p>Containers are plain JVM-wide singletons wired in via {@link DynamicPropertySource}
@@ -33,7 +34,10 @@ import org.testcontainers.utility.DockerImageName;
         "rydex.rate-limits.per-minute.default=10000",
         "rydex.jwt.private-key-location=",
         "rydex.jwt.public-key-location=",
-        "rydex.geo.nominatim-interval=10ms"
+        "rydex.geo.nominatim-interval=10ms",
+        "rydex.messaging.create-topics=true",
+        "rydex.messaging.outbox.poll-interval=100ms",
+        "rydex.messaging.retry.initial-interval=100ms"
 })
 public abstract class IntegrationTest {
 
@@ -42,9 +46,12 @@ public abstract class IntegrationTest {
 
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
 
+    static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.3.1");
+
     static {
         POSTGRES.start();
         REDIS.start();
+        KAFKA.start();
     }
 
     /**
@@ -71,6 +78,11 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
+    }
+
+    protected static KafkaProbe kafka() {
+        return new KafkaProbe(KAFKA.getBootstrapServers());
     }
 
     @MockitoBean

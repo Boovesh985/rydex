@@ -20,6 +20,7 @@
 
     <modules>
         <module>libs/common-events</module>
+        <module>libs/messaging</module>
         <module>services/ride-service</module>
         <module>services/driver-service</module>
         <module>services/tracking-service</module>
@@ -41,6 +42,11 @@
             <dependency>
                 <groupId>com.rydex</groupId>
                 <artifactId>common-events</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.rydex</groupId>
+                <artifactId>messaging</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
