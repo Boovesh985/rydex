@@ -22,6 +22,10 @@
     "reason": {
       "type": ["string", "null"],
       "description": "Cancel reason (RIDE_CANCELLED) or why matching gave up (NO_DRIVER_FOUND)."
+    },
+    "cancellationFee": {
+      "type": ["number", "null"], "exclusiveMinimum": 0,
+      "description": "RIDE_CANCELLED only: INR the rider pays for cancelling after the driver arrived (payment-service charges it). Null when the cancellation is free."
     }
   },
   "$defs": {
@@ -45,7 +49,8 @@
       "fare": 339.00,
       "estDistanceM": 22111,
       "estDurationS": 1359,
-      "reason": null
+      "reason": null,
+      "cancellationFee": null
     }
   ]
 }

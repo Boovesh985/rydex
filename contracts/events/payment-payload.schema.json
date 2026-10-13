@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rydex.dev/contracts/events/payment-payload.schema.json",
+  "title": "PaymentPayload",
+  "description": "Payload of every payment.events message (PAYMENT_INITIATED, PAYMENT_SUCCEEDED, PAYMENT_FAILED, PAYMENT_REFUNDED), inside the usual envelope; the envelope's rideId is the ride the payment is for (and the Kafka key). Mirrors com.rydex.events.PaymentPayload. PAYMENT_INITIATED means the rider must pay in Razorpay Checkout; the mock provider never sends it. Consumers must ignore unknown fields.",
+  "type": "object",
+  "required": ["paymentId", "riderId", "kind", "amount", "currency", "provider", "status"],
+  "properties": {
+    "paymentId": { "type": "string", "format": "uuid" },
+    "riderId": { "type": "string", "format": "uuid" },
+    "driverId": { "type": ["string", "null"], "format": "uuid" },
+    "kind": {
+      "enum": ["RIDE_FARE", "CANCELLATION_FEE"],
+      "description": "A completed ride's fare, or the fee for cancelling after the driver arrived."
+    },
+    "amount": { "type": "number", "exclusiveMinimum": 0, "description": "INR charged (or to be charged)." },
+    "refundedAmount": { "type": "number", "minimum": 0, "description": "INR refunded so far, this refund included." },
+    "refundAmount": {
+      "type": ["number", "null"], "exclusiveMinimum": 0,
+      "description": "PAYMENT_REFUNDED only: the INR this refund returned."
+    },
+    "currency": { "const": "INR" },
+    "provider": { "enum": ["MOCK", "RAZORPAY"] },
+    "providerRef": {
+      "type": ["string", "null"],
+      "description": "Razorpay order id (order_...) or the mock charge id."
+    },
+    "status": {
+      "enum": ["PENDING", "SUCCEEDED", "FAILED", "REFUNDED"],
+      "description": "The payment's status after the event. REFUNDED only once refunded in full; a partial refund leaves SUCCEEDED."
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "description": "PAYMENT_FAILED: why (shown to the rider). PAYMENT_REFUNDED: the refund reason."
+    }
+  },
+  "examples": [
+    {
+      "paymentId": "2f1c9a4e-5b8d-4a51-9a0e-6f3b7c1d2e90",
+      "riderId": "00000000-0000-4000-8000-000000000101",
+      "driverId": "00000000-0000-4000-8000-000000000201",
+      "kind": "RIDE_FARE",
+      "amount": 339.00,
+      "refundedAmount": 0,
+      "refundAmount": null,
+      "currency": "INR",
+      "provider": "RAZORPAY",
+      "providerRef": "order_PdZ2ZsLwQqF3Xy",
+      "status": "SUCCEEDED",
+      "reason": null
+    }
+  ]
+}

@@ -7,15 +7,22 @@
 #            arrived -> start (OTP) -> complete -> driver free again; and a cancelled offer
 #   Phase 4  the same ride live over WebSockets (STOMP): offer pushed to the driver, accepted over
 #            the socket, notifications to the rider, the driver's position streamed with an ETA
+#   Phase 5  payments: the fare charged on completion, a fee for cancelling after the driver
+#            arrived, an admin refund, and the rider notified at each step
 #
 # Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081),
-# driver-service (:8082) and tracking-service (:8083) running (see README). Usage, from the repo root:
+# driver-service (:8082), tracking-service (:8083) and payment-service (:8084) running (see README).
+# Usage, from the repo root:
 #   powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
+# With payment-service in Razorpay test mode, add -PayInBrowser to pay the fee in a browser
+# (UPI ID success@razorpay) and also check the refund.
 
 param(
     [string]$RideUrl = "http://localhost:8081",
     [string]$DriverUrl = "http://localhost:8082",
-    [string]$TrackingUrl = "http://localhost:8083"
+    [string]$TrackingUrl = "http://localhost:8083",
+    [string]$PaymentUrl = "http://localhost:8084",
+    [switch]$PayInBrowser
 )
 
 $ErrorActionPreference = "Continue"
@@ -427,6 +434,91 @@ Check "tracking-service Swagger UI is up" ((Api GET "$TrackingUrl/v3/api-docs").
 StompClose $dws
 StompClose $rws
 [void](WaitFor 15 { (Api GET "$DriverUrl/api/drivers/me" $driverToken).Body.status -eq "AVAILABLE" })
+Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
+
+# ---------------------------------------------------------------- Phase 5
+Section "Phase 5 - payments ($PaymentUrl)"
+$phealth = Api GET "$PaymentUrl/actuator/health"
+$provider = (Api GET "$PaymentUrl/api/payments/config").Body.provider
+Check "payment-service is UP" ($phealth.Status -eq 200 -and $phealth.Body.status -eq "UP") "provider $provider"
+if ($phealth.Status -ne 200) {
+    Write-Host "payment-service is not running; start it first (README step 7)." -ForegroundColor Yellow
+    exit 1
+}
+$mock = $provider -eq "MOCK"
+
+# the fare of the Phase 3 ride
+$watch.Restart()
+$hasFare = WaitFor 20 { (Api GET "$PaymentUrl/api/payments/rides/$rideId" $rider).Status -eq 200 }
+$fare = (Api GET "$PaymentUrl/api/payments/rides/$rideId" $rider).Body
+Check "RIDE_COMPLETED reaches payment-service: the fare is charged" ($hasFare -and $fare.kind -eq "RIDE_FARE" -and $fare.amount -eq $completed.Body.finalFare) ("Rs {0} after {1:N1} s" -f $fare.amount, $watch.Elapsed.TotalSeconds)
+if ($mock) {
+    $farePaid = WaitFor 15 { (Api GET "$PaymentUrl/api/payments/rides/$rideId" $rider).Body.status -eq "SUCCEEDED" }
+    Check "the mock provider takes the payment" $farePaid
+    $rideSeesIt = WaitFor 15 { (Api GET "$RideUrl/api/rides/$rideId" $rider).Body.paymentStatus -eq "SUCCEEDED" }
+    Check "PAYMENT_SUCCEEDED reaches ride-service: the ride shows it paid" $rideSeesIt
+} else {
+    $ordered = WaitFor 20 { $null -ne (Api GET "$PaymentUrl/api/payments/rides/$rideId" $rider).Body.checkout }
+    $fare = (Api GET "$PaymentUrl/api/payments/rides/$rideId" $rider).Body
+    Check "a Razorpay test-mode order awaits rider1" ($ordered -and $fare.checkout.orderId -like "order_*" -and $fare.checkout.keyId -like "rzp_test_*") "$($fare.checkout.orderId), $($fare.checkout.amount) paise"
+    $rideSeesIt = WaitFor 15 { (Api GET "$RideUrl/api/rides/$rideId" $rider).Body.paymentStatus -eq "PENDING" }
+    Check "PAYMENT_INITIATED reaches ride-service: the ride shows it unpaid" $rideSeesIt
+}
+Check "driver01 sees the payment for their ride" ((Api GET "$PaymentUrl/api/payments/rides/$rideId" $driverToken).Status -eq 200)
+Check "another rider cannot see it (404)" ((Api GET "$PaymentUrl/api/payments/rides/$rideId" $rider2).Status -eq 404)
+
+# a late cancellation: the driver has arrived, the rider cancels and pays the fee; an admin refunds it
+$rws = StompConnect $wsUrl $rider
+$notes = StompSubscribe $rws "/user/queue/notifications"
+Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "AVAILABLE"; lat = 13.0831; lng = 80.2707 } | Out-Null
+$book5 = Api POST "$RideUrl/api/rides" $rider @{ pickup = $center; drop = $airport; rideType = "ECONOMY" } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
+$ride5 = $book5.Body.id
+[void](WaitFor 30 { $o = Api GET "$DriverUrl/api/drivers/me/offer" $driverToken; $o.Status -eq 200 -and $o.Body.rideId -eq $ride5 })
+Api POST "$DriverUrl/api/drivers/me/offers/$ride5/accept" $driverToken | Out-Null
+[void](WaitFor 15 { (Api GET "$RideUrl/api/rides/$ride5" $rider).Body.status -eq "DRIVER_ASSIGNED" })
+Api POST "$RideUrl/api/rides/$ride5/arrived" $driverToken | Out-Null
+$cancel5 = Api POST "$RideUrl/api/rides/$ride5/cancel" $rider @{ reason = "smoke test: changed plans" }
+Check "cancelling after the driver arrived costs a fee" ($cancel5.Body.status -eq "CANCELLED" -and $cancel5.Body.cancellationFee -gt 0) "Rs $($cancel5.Body.cancellationFee)"
+$feeNote = StompMessage $rws $notes 15000 { param($j) $j.type -eq "RIDE_CANCELLED" -and $j.rideId -eq $ride5 }
+Check "rider1 is told about the fee" ($feeNote.Json.message -like "*cancellation fee*") "$($feeNote.Json.message)"
+$hasFee = WaitFor 20 { (Api GET "$PaymentUrl/api/payments/rides/$ride5" $rider).Status -eq 200 }
+$fee = (Api GET "$PaymentUrl/api/payments/rides/$ride5" $rider).Body
+Check "RIDE_CANCELLED reaches payment-service: the fee is charged" ($hasFee -and $fee.kind -eq "CANCELLATION_FEE" -and $fee.amount -eq $cancel5.Body.cancellationFee)
+
+$feePaid = $false
+if ($mock) {
+    $paidNote = StompMessage $rws $notes 15000 { param($j) $j.type -eq "PAYMENT_SUCCEEDED" -and $j.rideId -eq $ride5 }
+    Check "rider1 is notified: cancellation fee paid" ($null -ne $paidNote) "$($paidNote.Json.message)"
+    $feePaid = $null -ne $paidNote
+} else {
+    $dueNote = StompMessage $rws $notes 20000 { param($j) $j.type -eq "PAYMENT_INITIATED" -and $j.rideId -eq $ride5 }
+    Check "rider1 is notified: payment due (Razorpay Checkout)" ($null -ne $dueNote) "$($dueNote.Json.message)"
+    $checkoutUrl = "$PaymentUrl/dev/checkout.html#ride=$ride5&token=$rider"
+    if ($PayInBrowser) {
+        Write-Host "Opening the test checkout: pay with UPI ID success@razorpay (waiting up to 5 minutes)..." -ForegroundColor Yellow
+        Start-Process $checkoutUrl
+        $paidNote = StompMessage $rws $notes 300000 { param($j) $j.type -eq "PAYMENT_SUCCEEDED" -and $j.rideId -eq $ride5 }
+        Check "rider1 paid in Razorpay Checkout and is notified" ($null -ne $paidNote) "$($paidNote.Json.message)"
+        $feePaid = $null -ne $paidNote
+    } else {
+        Write-Host "To pay it in Razorpay test mode, re-run with -PayInBrowser (refund checks are skipped until then)." -ForegroundColor Yellow
+    }
+}
+
+$feeId = $fee.id
+Check "only admins can refund (403)" ((Api POST "$PaymentUrl/api/admin/payments/$feeId/refunds" $rider @{ reason = "x" }).Status -eq 403)
+if ($feePaid) {
+    $refund = Api POST "$PaymentUrl/api/admin/payments/$feeId/refunds" $admin @{ reason = "Smoke test: driver was late" }
+    Check "an admin refunds the fee" ($refund.Status -eq 202) "HTTP $($refund.Status)"
+    $refundNote = StompMessage $rws $notes 60000 { param($j) $j.type -eq "PAYMENT_REFUNDED" -and $j.rideId -eq $ride5 }
+    Check "rider1 is notified: refund issued" ($null -ne $refundNote) "$($refundNote.Json.message)"
+    $refunded = WaitFor 15 { (Api GET "$RideUrl/api/rides/$ride5" $rider).Body.paymentStatus -eq "REFUNDED" }
+    Check "PAYMENT_REFUNDED reaches ride-service" $refunded
+    Check "the fee cannot be refunded twice (409)" ((Api POST "$PaymentUrl/api/admin/payments/$feeId/refunds" $admin @{ reason = "again" }).Status -eq 409)
+}
+Check "payment-service Swagger UI is up" ((Api GET "$PaymentUrl/v3/api-docs").Status -eq 200)
+
+StompClose $rws
 Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
 
 # ---------------------------------------------------------------- summary

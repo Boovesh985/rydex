@@ -2,6 +2,7 @@ package com.rydex.ride.ride;
 
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
+import com.rydex.events.PaymentPayload;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -102,6 +103,18 @@ public class Ride {
     @Column(name = "cancelled_by")
     private String cancelledBy;
 
+    /** INR charged for cancelling after the driver arrived; null when the cancellation was free. */
+    @Column(name = "cancellation_fee")
+    private BigDecimal cancellationFee;
+
+    /** Mirrors payment-service (payment.events): null until a payment exists for the ride. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status")
+    private PaymentPayload.Status paymentStatus;
+
+    @Column(name = "refunded_amount")
+    private BigDecimal refundedAmount;
+
     /** Wrapper type: null marks a new entity, so save() persists without a SELECT. */
     @Version
     private Long version;
@@ -156,10 +169,22 @@ public class Ride {
     }
 
     public void cancel(String by, String reason, Instant now) {
+        cancel(by, reason, null, now);
+    }
+
+    /** {@code fee}: what the rider pays for cancelling late, or null. */
+    public void cancel(String by, String reason, BigDecimal fee, Instant now) {
         transitionTo(RideStatus.CANCELLED);
         this.cancelledAt = now;
         this.cancelledBy = by;
         this.cancelReason = reason;
+        this.cancellationFee = fee;
+    }
+
+    /** payment-service reported a change to the ride's payment. */
+    public void paymentChanged(PaymentPayload.Status status, BigDecimal refunded) {
+        this.paymentStatus = status;
+        this.refundedAmount = refunded;
     }
 
     public void markNoDriverFound(Instant now) {
@@ -261,5 +286,17 @@ public class Ride {
 
     public String getCancelledBy() {
         return cancelledBy;
+    }
+
+    public BigDecimal getCancellationFee() {
+        return cancellationFee;
+    }
+
+    public PaymentPayload.Status getPaymentStatus() {
+        return paymentStatus;
+    }
+
+    public BigDecimal getRefundedAmount() {
+        return refundedAmount;
     }
 }

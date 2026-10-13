@@ -4,6 +4,7 @@ import com.rydex.common.ws.WsDestinations;
 import com.rydex.common.ws.WsPush;
 import com.rydex.events.EventEnvelope;
 import com.rydex.events.RidePayload;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,11 +37,14 @@ final class Notifications {
             }
             case RIDE_CANCELLED -> {
                 String why = reason != null ? reason : "No reason given.";
-                pushes.add(toRider(event, ride, "Ride cancelled", why));
+                BigDecimal fee = event.payload() == null ? null : event.payload().cancellationFee();
+                String charged = fee == null ? "" : (why.endsWith(".") ? " " : ". ") + "A cancellation fee of Rs "
+                        + fee.stripTrailingZeros().toPlainString() + " applies: the driver had arrived.";
+                pushes.add(toRider(event, ride, "Ride cancelled", why + charged));
                 pushes.add(toDriver(event, ride, "Ride cancelled", why));
             }
             default -> {
-                // payment events are handled in Phase 5
+                // not a ride step
             }
         }
         pushes.removeIf(p -> p == null);

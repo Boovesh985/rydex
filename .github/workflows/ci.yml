@@ -96,19 +96,20 @@ jobs:
           docker compose -f infra/docker-compose.yml run --rm kafka-init
       - name: Build services
         run: ./mvnw -B -ntp -DskipTests -Djacoco.skip=true package
-      - name: Start ride-service, driver-service and tracking-service
+      - name: Start ride-service, driver-service, tracking-service and payment-service
         run: |
           nohup java -jar services/ride-service/target/ride-service-*.jar > ride.log 2>&1 &
           nohup java -jar services/driver-service/target/driver-service-*.jar > driver.log 2>&1 &
           nohup java -jar services/tracking-service/target/tracking-service-*.jar > tracking.log 2>&1 &
-          for port in 8081 8082 8083; do
+          PAYMENT_PROVIDER=mock nohup java -jar services/payment-service/target/payment-service-*.jar > payment.log 2>&1 &
+          for port in 8081 8082 8083 8084; do
             timeout 120 bash -c "until curl -sf localhost:$port/actuator/health > /dev/null; do sleep 2; done"
           done
-      - name: Smoke test (phases 0-4, full ride over Kafka and WebSockets)
+      - name: Smoke test (phases 0-5, full ride over Kafka and WebSockets, payments)
         shell: pwsh
         run: ./infra/scripts/smoke-test.ps1
       - name: Logs on failure
         if: failure()
         run: |
-          tail -n 150 ride.log driver.log tracking.log || true
+          tail -n 150 ride.log driver.log tracking.log payment.log || true
           docker compose -f infra/docker-compose.yml logs --tail 50

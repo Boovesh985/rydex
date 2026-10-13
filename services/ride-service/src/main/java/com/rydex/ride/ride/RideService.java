@@ -14,6 +14,8 @@ import com.rydex.ride.ride.RideDtos.StatusChangeView;
 import com.rydex.ride.security.AuthUser;
 import com.rydex.ride.user.Role;
 import com.rydex.ride.web.ApiException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,10 +52,12 @@ public class RideService {
     private final OutboxWriter outbox;
     private final MarketplaceStore market;
     private final StringRedisTemplate redis;
+    private final RideProperties props;
     private final Clock clock;
 
     RideService(RideRepository rides, RideStatusChangeRepository history, EstimateService estimates, OtpService otps,
-                OutboxWriter outbox, MarketplaceStore market, StringRedisTemplate redis, Clock clock) {
+                OutboxWriter outbox, MarketplaceStore market, StringRedisTemplate redis, RideProperties props,
+                Clock clock) {
         this.rides = rides;
         this.history = history;
         this.estimates = estimates;
@@ -61,6 +65,7 @@ public class RideService {
         this.outbox = outbox;
         this.market = market;
         this.redis = redis;
+        this.props = props;
         this.clock = clock;
     }
 
@@ -109,13 +114,18 @@ public class RideService {
                 page, size, result.getTotalElements());
     }
 
+    /**
+     * Free until the driver arrives; a rider who cancels after that pays the ride type's
+     * cancellation fee (payment-service charges it from the RIDE_CANCELLED event).
+     */
     @Transactional
     public RideView cancel(AuthUser caller, UUID rideId, String reason) {
         Ride ride = load(rideId);
         requireAccess(caller, ride);
         RideStatus from = ride.getStatus();
         Instant now = clock.instant();
-        ride.cancel(caller.role().name(), reason == null || reason.isBlank() ? null : reason.trim(), now);
+        ride.cancel(caller.role().name(), reason == null || reason.isBlank() ? null : reason.trim(),
+                cancellationFee(caller, ride), now);
         record(ride, from, caller.actor(), now);
         publish(EventType.RIDE_CANCELLED, ride, ride.getCancelReason());
         return RideView.of(ride, null, null);
@@ -205,6 +215,14 @@ public class RideService {
         return true;
     }
 
+    private BigDecimal cancellationFee(AuthUser caller, Ride ride) {
+        if (!caller.is(Role.RIDER) || ride.getStatus() != RideStatus.DRIVER_ARRIVED) {
+            return null;
+        }
+        BigDecimal fee = props.cancellationFee(ride.getRideType());
+        return fee == null || fee.signum() <= 0 ? null : fee.setScale(2, RoundingMode.HALF_UP);
+    }
+
     private Ride load(UUID rideId) {
         return rides.findById(rideId).orElseThrow(() -> ApiException.notFound("Ride"));
     }
@@ -247,7 +265,8 @@ public class RideService {
     private void publish(EventType type, Ride ride, String reason) {
         var payload = new RidePayload(ride.getRiderId(), ride.getDriverId(), ride.getRideType(), ride.pickup(),
                 ride.drop(), ride.getFinalFare() != null ? ride.getFinalFare() : ride.getEstFare(),
-                ride.getEstDistanceM(), ride.getEstDurationS(), reason);
+                ride.getEstDistanceM(), ride.getEstDurationS(), reason,
+                type == EventType.RIDE_CANCELLED ? ride.getCancellationFee() : null);
         outbox.append(EventEnvelope.of(type, ride.getId().toString(), payload, clock));
     }
 

@@ -30,7 +30,9 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 - STOMP: do NOT `setPreserveReceiveOrder(true)` — its decorator swallows `StompAuthInterceptor` exceptions, so refused frames get no ERROR frame. Tests must let a SUBSCRIBE settle before publishing (StompTestClient does).
 - Tests load Mockito as a `-javaagent` (root pom, via `maven-dependency-plugin:properties`); dynamic self-attach failed intermittently on Windows.
 - A new service schema on an existing DB volume: re-run `infra/postgres/initdb/01-init.sh` (idempotent; see README).
-- Running all three services plus `mvnw verify` can exhaust 8 GB RAM (forked test JVM fails to start): stop the services first.
+- Running the services plus `mvnw verify` can exhaust 8 GB RAM (forked test JVM fails to start): stop the services first.
+- Python helper scripts piped through a Bash heredoc lose backslashes (a doubled backslash arrives single): write them with the Write tool and raw strings.
+- payment-service reads a git-ignored `services/payment-service/.env` (Razorpay test keys, `PAYMENT_PROVIDER`). Its tests set every payment property explicitly so a developer's `.env` cannot leak in; they run against `RazorpayStub`, never Razorpay. Only `rzp_test_` keys start the service.
 
 ## Layout
 - `libs/common-events` — `EventEnvelope`, `EventType`, `Topics`
@@ -38,7 +40,8 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 - `libs/messaging` — `@EnableMessaging`: `OutboxWriter`, `OutboxRelay`, `ProcessedEvents`, `EventCodec`, DLT error handler (ADR 0009). Each service needs `processed_events`, and `outbox` unless `rydex.messaging.outbox.enabled=false` (tracking).
 - `libs/presence` — `PresenceStore` + Lua scripts for `driver:{id}:state|loc`, `driver:lastseen`, GEO/supply indexes; used by driver-service and tracking-service (ADR 0011).
 - tracking-service — STOMP at `/ws` (contract: `contracts/websocket.md`), `ws:push` Redis channel for fan-out (driver-service pushes offers there too), `tracked_rides` projection, `driver.location` producer + `tracking-history` consumer.
-- Event flow: ride-service → RIDE_REQUESTED/CANCELLED/COMPLETED → driver-service (`events/RideLifecycleHandler`); driver-service → DRIVER_ASSIGNED/NO_DRIVER_FOUND → ride-service (`events/MatchingOutcomeHandler`); every ride event → tracking-service (`ride/RideProjection` → notifications).
+- payment-service — one payment per ride (fare on RIDE_COMPLETED, fee on a RIDE_CANCELLED with `cancellationFee`); `PaymentProcessor` (leases, provider calls outside transactions) + `PaymentLedger` (state + outbox); providers `MockPaymentProvider` / `RazorpayProvider` (orders, checkout verify, polling, webhook, refunds); admin refunds; `/dev/checkout.html` (ADR 0012).
+- Event flow: ride-service → RIDE_REQUESTED/CANCELLED/COMPLETED → driver-service (`events/RideLifecycleHandler`); driver-service → DRIVER_ASSIGNED/NO_DRIVER_FOUND → ride-service (`events/MatchingOutcomeHandler`); every ride event → tracking-service (`ride/RideProjection` → notifications); RIDE_COMPLETED/CANCELLED → payment-service (`events/RideChargeHandler`); payment.events → ride-service (`events/PaymentOutcomeHandler`, ride `paymentStatus`) and tracking-service (`payment/PaymentNotifications`).
 - DB: database `rydex`, schema + role per service (`ride`/`ride_svc`, …). See ADR 0004.
 
 ## Progress
@@ -48,3 +51,4 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 - [x] Phase 3 — Kafka: libs/messaging outbox relay, idempotent consumers, retries + DLT; ride ⇄ driver event flow; CI e2e job (ADR 0009)
 - [x] Post-Phase-3 audit fixes: ~5 min listener retries, single-active outbox relay, unmatched-ride sweeper + admin driver release (ADR 0010), matching radius/projection/lock fixes
 - [x] Phase 4 — tracking-service: STOMP/WebSocket with JWT on CONNECT, location ingest (shared libs/presence), live ETA broadcasts, ride notifications, offer push + respond, Redis pub/sub fan-out, driver.location + trip history (ADR 0011)
+- [x] Phase 5 — payment-service: mock provider + Razorpay test mode (orders, Checkout signature verify, polling, webhooks), late-cancellation fee, admin refunds (partial/full), payment.events → ride paymentStatus + notifications (ADR 0012)

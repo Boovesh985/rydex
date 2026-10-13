@@ -96,6 +96,11 @@ rydex:
     # safety net (ADR 0010): a ride with no matching outcome this long after booking is cancelled
     unmatched-timeout: 5m
     sweep-interval: 30s
+    # charged when the rider cancels after the driver has arrived (ADR 0012); earlier cancellations are free
+    cancellation-fees:
+      ECONOMY: 50
+      COMFORT: 75
+      XL: 100
   geo:
     osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
     nominatim-base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}

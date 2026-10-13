@@ -1,13 +1,48 @@
 server:
   port: ${PORT:8084}
   shutdown: graceful
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   application:
     name: payment-service
+  # Local secrets (Razorpay test keys) live in a git-ignored .env next to the service, read as
+  # properties: see .env.example. In containers they come from real environment variables.
+  config:
+    import: optional:file:.env[.properties]
   threads:
     virtual:
       enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rydex}
+    username: ${DB_USER:payment_svc}
+    password: ${DB_PASSWORD:payment_local_pw}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      # each service lives in its own schema (ADR 0004)
+      connection-init-sql: SET search_path TO payment, public
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    schemas: payment
+    default-schema: payment
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: record
+      concurrency: 3
 
 management:
   endpoints:
@@ -18,3 +53,49 @@ management:
     health:
       probes:
         enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+    persist-authorization: true
+  api-docs:
+    path: /v3/api-docs
+
+rydex:
+  jwt:
+    issuer: ${JWT_ISSUER:rydex}
+    # ride-service issues tokens and publishes its public key here (ADR 0006)
+    jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  payments:
+    # mock (default: charges succeed at once) or razorpay (test mode: the rider pays in Razorpay Checkout)
+    provider: ${PAYMENT_PROVIDER:mock}
+    currency: INR
+    # how often due payments and refunds are picked up (new ones start at once; this is the safety net)
+    process-interval: 2s
+    # a worker holds a payment this long while it talks to the provider
+    lease: 30s
+    # provider unreachable: retry after 1, 2, 4 ... s, at most this far apart
+    retry-max-delay: 5m
+    # /dev/checkout.html: a page to pay a ride in Razorpay test mode before the frontend exists
+    dev-pages: ${PAYMENT_DEV_PAGES:true}
+    mock:
+      # the mock provider declines charges above this (INR), to exercise failures
+      decline-above: 5000
+    razorpay:
+      base-url: https://api.razorpay.com/v1
+      key-id: ${RAZORPAY_KEY_ID:}
+      key-secret: ${RAZORPAY_KEY_SECRET:}
+      # optional: only needed once Razorpay can reach the backend (Phase 10)
+      webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+      # live keys (rzp_live_...) are refused unless this is true: Rydex is a demo
+      allow-live: false
+      business-name: Rydex
+      connect-timeout: 3s
+      read-timeout: 10s
+      # an unpaid order is checked this soon, then ever less often, up to max-check-interval
+      check-interval: 30s
+      max-check-interval: 30m
+      # an order nobody paid for is no longer checked after this
+      give-up-after: 7d

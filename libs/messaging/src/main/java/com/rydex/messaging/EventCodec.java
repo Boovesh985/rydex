@@ -2,6 +2,7 @@ package com.rydex.messaging;
 
 import com.rydex.events.EventEnvelope;
 import com.rydex.events.EventType;
+import com.rydex.events.PaymentPayload;
 import com.rydex.events.RidePayload;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
@@ -14,6 +15,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class EventCodec {
 
     private static final TypeReference<EventEnvelope<RidePayload>> RIDE_EVENT = new TypeReference<>() {
+    };
+    private static final TypeReference<EventEnvelope<PaymentPayload>> PAYMENT_EVENT = new TypeReference<>() {
     };
 
     private final JsonMapper json;
@@ -37,14 +40,22 @@ public class EventCodec {
     }
 
     public EventEnvelope<RidePayload> rideEvent(String value) {
+        return read(value, RIDE_EVENT, "ride");
+    }
+
+    public EventEnvelope<PaymentPayload> paymentEvent(String value) {
+        return read(value, PAYMENT_EVENT, "payment");
+    }
+
+    private <T> EventEnvelope<T> read(String value, TypeReference<EventEnvelope<T>> type, String what) {
         if (value == null || value.isBlank()) {
-            throw new NonRetryableEventException("empty ride event");
+            throw new NonRetryableEventException("empty " + what + " event");
         }
         try {
-            return json.readValue(value, RIDE_EVENT);
+            return json.readValue(value, type);
         } catch (RuntimeException e) {
             // Jackson parse errors and the envelope's own validation (null id, bad version, ...)
-            throw new NonRetryableEventException("unreadable ride event: " + e.getMessage());
+            throw new NonRetryableEventException("unreadable " + what + " event: " + e.getMessage());
         }
     }
 }

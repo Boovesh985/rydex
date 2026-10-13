@@ -3,7 +3,7 @@
 Uber-style ride hailing with live driver tracking and AI ride suggestions, built on free tiers only.
 React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafka · WebSockets · FastAPI.
 
-> 🚧 Work in progress. Phases 0–4 (scaffold, ride-service, driver-service, Kafka event flow, live tracking over WebSockets) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
+> 🚧 Work in progress. Phases 0–5 (scaffold, ride-service, driver-service, Kafka event flow, live tracking over WebSockets, payments) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
 
 ## Quick start
 
@@ -28,20 +28,30 @@ cd services\driver-service; ..\..\mvnw.cmd spring-boot:run
 
 # 6. In a third terminal, run tracking-service (WebSocket at ws://localhost:8083/ws)
 cd services\tracking-service; ..\..\mvnw.cmd spring-boot:run
+
+# 7. In a fourth terminal, run payment-service (http://localhost:8084/swagger-ui)
+cd services\payment-service; ..\..\mvnw.cmd spring-boot:run
 ```
 
-Already have a database volume from before Phase 4? Add the new `tracking` schema and role once:
+Payments use a mock provider by default (every charge succeeds at once). To use **Razorpay test mode** instead,
+copy `services/payment-service/.env.example` to `services/payment-service/.env` (git-ignored), fill in your test
+keys and restart payment-service. No real money moves. The rider pays in Razorpay Checkout; until the frontend
+exists, `http://localhost:8084/dev/checkout.html` does that for one ride (UPI ID `success@razorpay`). See ADR 12.
+
+Already have a database volume from before Phase 4? Add the newer schemas and roles once (safe to repeat):
 ```powershell
 Get-Content infra\postgres\initdb\01-init.sh -Raw | docker compose -f infra/docker-compose.yml exec -T postgres bash -s
 ```
 
-**Check that it works.** With the infrastructure and the three services running, this tests everything built so
-far and prints PASS/FAIL per check. It ends with a full ride across the services over Kafka (book, offer, accept,
-arrive, OTP start, complete) and then the same ride live over WebSockets (the offer pushed to the driver, accepted
-over the socket, notifications and the driver's position streamed to the rider). CI runs it on every push:
+**Check that it works.** With the infrastructure and the four services running, this tests everything built so
+far and prints PASS/FAIL per check. It runs a full ride across the services over Kafka (book, offer, accept,
+arrive, OTP start, complete), the same ride live over WebSockets (the offer pushed to the driver, accepted over
+the socket, notifications and the driver's position streamed to the rider), and payments (the fare charged, a late
+cancellation fee, an admin refund). CI runs it on every push:
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
 ```
+In Razorpay test mode, add `-PayInBrowser`: it opens the test checkout to pay the cancellation fee, then refunds it.
 
 **macOS / Linux / Git Bash**
 ```bash
@@ -51,6 +61,7 @@ bash infra/scripts/gen-jwt-keys.sh
 cd services/ride-service && ../../mvnw spring-boot:run
 cd services/driver-service && ../../mvnw spring-boot:run   # second terminal
 cd services/tracking-service && ../../mvnw spring-boot:run # third terminal
+cd services/payment-service && ../../mvnw spring-boot:run  # fourth terminal
 ```
 
 Demo accounts (seeded): `admin@rydex.dev`, `rider1..5@rydex.dev`, `driver01..50@rydex.dev`, all with password `Rydex@123`.
@@ -73,10 +84,10 @@ libs/common-events/   shared event envelope, event types, topic names, geohash, 
 libs/messaging/       outbox relay, idempotent consumers, retries + dead-letter topics (@EnableMessaging)
 libs/presence/        driver presence in Redis (Lua scripts), shared by driver- and tracking-service
 services/             ride, driver, tracking, payment (Spring Boot)
-contracts/            JSON Schemas for Kafka events, the WebSocket (STOMP) API
+contracts/            JSON Schemas for Kafka events (ride, payment, driver location), the WebSocket (STOMP) API
 infra/                docker compose, PostGIS image, Kafka topic script
 docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12).

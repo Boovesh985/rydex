@@ -77,9 +77,25 @@ One per ride step, to the rider and (from assignment on) the driver where it con
 | `DRIVER_ARRIVED` | Your driver has arrived | |
 | `RIDE_STARTED` | Trip started | |
 | `RIDE_COMPLETED` | Trip completed (with fare) | Trip completed |
-| `RIDE_CANCELLED` | Ride cancelled (with reason) | Ride cancelled |
+| `RIDE_CANCELLED` | Ride cancelled (with reason, and the fee if the driver had arrived) | Ride cancelled |
 
 `eventId` identifies the ride event; a client may see the same one again after a reconnect and can drop it.
+
+### Payment notifications
+Payment steps (from `payment.events`) arrive on the same queue with their own shape; tell them apart by `type`.
+```json
+{ "eventId": "...", "type": "PAYMENT_SUCCEEDED", "rideId": "...", "paymentId": "...", "kind": "RIDE_FARE",
+  "status": "SUCCEEDED", "amount": 339.00, "refundAmount": null, "currency": "INR",
+  "title": "Payment received", "message": "Rs 339 paid for your trip. Thanks for riding with Rydex.", "at": "..." }
+```
+| `type` | rider | driver |
+|---|---|---|
+| `PAYMENT_INITIATED` | Payment due (Razorpay: open Checkout, see `GET /api/payments/rides/{id}` on payment-service) | |
+| `PAYMENT_SUCCEEDED` | Payment received | Fare received / Cancellation fee received |
+| `PAYMENT_FAILED` | Payment failed (with the reason; pay again) | |
+| `PAYMENT_REFUNDED` | Refund issued (`refundAmount`, reason) | |
+
+`kind` is `RIDE_FARE` or `CANCELLATION_FEE`.
 
 ## Server → watchers: `/topic/rides/{rideId}/location`
 The driver's position on each accepted update, with a live ETA.

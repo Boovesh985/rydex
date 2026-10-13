@@ -2,6 +2,7 @@ package com.rydex.ride.ride;
 
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
+import com.rydex.events.PaymentPayload;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -66,8 +67,10 @@ public final class RideDtos {
     }
 
     /**
-     * @param otp      shown to the rider only, until the trip starts
-     * @param timeline status history; only populated on single-ride reads
+     * @param otp             shown to the rider only, until the trip starts
+     * @param cancellationFee INR charged for cancelling after the driver arrived
+     * @param paymentStatus   the ride's payment (fare or cancellation fee), once payment-service has one
+     * @param timeline        status history; only populated on single-ride reads
      */
     public record RideView(
             UUID id,
@@ -91,6 +94,9 @@ public final class RideDtos {
             Instant cancelledAt,
             String cancelReason,
             String cancelledBy,
+            BigDecimal cancellationFee,
+            PaymentPayload.Status paymentStatus,
+            BigDecimal refundedAmount,
             List<StatusChangeView> timeline) {
 
         static RideView of(Ride r, String otp, List<StatusChangeView> timeline) {
@@ -98,7 +104,7 @@ public final class RideDtos {
                     r.pickup(), r.drop(), r.getEstFare(), r.getFinalFare(), r.getEstDistanceM(), r.getEstDurationS(),
                     r.getSurgeMultiplier(), otp, r.getRequestedAt(), r.getAssignedAt(), r.getArrivedAt(),
                     r.getStartedAt(), r.getCompletedAt(), r.getCancelledAt(), r.getCancelReason(), r.getCancelledBy(),
-                    timeline);
+                    r.getCancellationFee(), r.getPaymentStatus(), r.getRefundedAmount(), timeline);
         }
     }
 
