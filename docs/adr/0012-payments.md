@@ -75,6 +75,7 @@ A failed Checkout attempt marks the payment FAILED (PAYMENT_FAILED notifies the 
 `/dev/checkout.html` on payment-service loads Razorpay Checkout for a ride; the smoke test opens it with `-PayInBrowser`. It is enabled locally and will be switched off in production (`PAYMENT_DEV_PAGES=false`, Phase 8). Tests run against an in-memory Razorpay stub, never against Razorpay itself.
 
 ## Consequences
+- **Not every test payment method can be refunded.** In the first run against a real test account, Razorpay rejected the refund of a wallet payment with only "invalid request sent". The same request with an amount that was too large was rejected for that reason instead, which shows the request itself was valid. A netbanking payment was refunded normally. Rydex records such a refund as FAILED with Razorpay's reason and releases the reserved amount, so an admin can try again.
 - **No automatic charge with Razorpay.** A rider who never opens Checkout stays unpaid; ride-service shows `paymentStatus: PENDING`. There is no dunning in this demo.
 - **Mock never sends PAYMENT_INITIATED.** Consumers must not wait for it.
 - **Webhooks need a public URL.** Until Phase 10, a payment made with the tab closed is noticed by polling, within the check interval.

@@ -36,7 +36,9 @@ cd services\payment-service; ..\..\mvnw.cmd spring-boot:run
 Payments use a mock provider by default (every charge succeeds at once). To use **Razorpay test mode** instead,
 copy `services/payment-service/.env.example` to `services/payment-service/.env` (git-ignored), fill in your test
 keys and restart payment-service. No real money moves. The rider pays in Razorpay Checkout; until the frontend
-exists, `http://localhost:8084/dev/checkout.html` does that for one ride (UPI ID `success@razorpay`). See ADR 12.
+exists, `http://localhost:8084/dev/checkout.html` does that for one ride: choose Netbanking (any bank, then Success) or
+a [test card](https://razorpay.com/docs/payments/payments/test-card-details/). Avoid Wallet: Razorpay test mode would
+not refund a wallet payment. See ADR 12.
 
 Already have a database volume from before Phase 4? Add the newer schemas and roles once (safe to repeat):
 ```powershell

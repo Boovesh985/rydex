@@ -15,7 +15,8 @@
 # Usage, from the repo root:
 #   powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
 # With payment-service in Razorpay test mode, add -PayInBrowser to pay the fee in a browser
-# (UPI ID success@razorpay) and also check the refund.
+# (Netbanking, any bank, then Success; or a Razorpay test card) and also check the refund.
+# Avoid Wallet: Razorpay test mode refused to refund a wallet payment.
 
 param(
     [string]$RideUrl = "http://localhost:8081",
@@ -495,7 +496,7 @@ if ($mock) {
     Check "rider1 is notified: payment due (Razorpay Checkout)" ($null -ne $dueNote) "$($dueNote.Json.message)"
     $checkoutUrl = "$PaymentUrl/dev/checkout.html#ride=$ride5&token=$rider"
     if ($PayInBrowser) {
-        Write-Host "Opening the test checkout: pay with UPI ID success@razorpay (waiting up to 5 minutes)..." -ForegroundColor Yellow
+        Write-Host "Opening the test checkout: pay with Netbanking (any bank, then Success) or a test card, not Wallet (waiting up to 5 minutes)..." -ForegroundColor Yellow
         Start-Process $checkoutUrl
         $paidNote = StompMessage $rws $notes 300000 { param($j) $j.type -eq "PAYMENT_SUCCEEDED" -and $j.rideId -eq $ride5 }
         Check "rider1 paid in Razorpay Checkout and is notified" ($null -ne $paidNote) "$($paidNote.Json.message)"
