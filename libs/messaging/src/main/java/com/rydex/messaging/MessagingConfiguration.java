@@ -50,8 +50,9 @@ class MessagingConfiguration {
     }
 
     /**
-     * Listener failures are retried with exponential backoff, then the record goes to
-     * {@code <topic>.DLT} on the same partition. Malformed events skip the retries.
+     * Listener failures are retried with exponential backoff (about 5 minutes by default), then the
+     * record goes to {@code <topic>.DLT} on the same partition. Malformed events skip the retries.
+     * While a record is retried its partition waits, so later events of the same ride stay in order.
      * Spring Boot applies this handler to the default listener container factory.
      */
     @Bean
@@ -59,12 +60,18 @@ class MessagingConfiguration {
     DefaultErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafka, MessagingProperties props) {
         var recoverer = new DeadLetterPublishingRecoverer(kafka,
                 (record, ex) -> new TopicPartition(Topics.deadLetter(record.topic()), record.partition()));
-        var backOff = new ExponentialBackOffWithMaxRetries(props.retry().maxRetries());
-        backOff.setInitialInterval(props.retry().initialInterval().toMillis());
-        backOff.setMultiplier(props.retry().multiplier());
-        var handler = new DefaultErrorHandler(recoverer, backOff);
+        var handler = new DefaultErrorHandler(recoverer, backOff(props.retry()));
         handler.addNotRetryableExceptions(NonRetryableEventException.class);
         return handler;
+    }
+
+    static ExponentialBackOffWithMaxRetries backOff(MessagingProperties.Retry retry) {
+        var backOff = new ExponentialBackOffWithMaxRetries(retry.maxRetries());
+        backOff.setInitialInterval(retry.initialInterval().toMillis());
+        backOff.setMultiplier(retry.multiplier());
+        // each wait stays well under max.poll.interval.ms (5 min), so the consumer keeps its partitions
+        backOff.setMaxInterval(retry.maxInterval().toMillis());
+        return backOff;
     }
 
     /**

@@ -38,6 +38,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class RideService {
 
     static final int MAX_OTP_ATTEMPTS = 5;
+    static final String SYSTEM_ACTOR = "SYSTEM:ride-service";
+    static final String UNMATCHED_REASON = "No driver found in time";
     private static final Set<RideStatus> OTP_VISIBLE =
             EnumSet.of(RideStatus.REQUESTED, RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_ARRIVED);
 
@@ -183,6 +185,24 @@ public class RideService {
         Instant now = clock.instant();
         ride.markNoDriverFound(now);
         record(ride, from, actor, now);
+    }
+
+    /**
+     * Unmatched-ride safety net: cancels a ride that is still REQUESTED, as the system. The
+     * RIDE_CANCELLED event stops driver-service's matching and frees a driver it assigned meanwhile.
+     * Returns false when the ride has moved on.
+     */
+    @Transactional
+    public boolean expireUnmatched(UUID rideId) {
+        Ride ride = load(rideId);
+        if (ride.getStatus() != RideStatus.REQUESTED) {
+            return false;
+        }
+        Instant now = clock.instant();
+        ride.cancel("SYSTEM", UNMATCHED_REASON, now);
+        record(ride, RideStatus.REQUESTED, SYSTEM_ACTOR, now);
+        publish(EventType.RIDE_CANCELLED, ride, ride.getCancelReason());
+        return true;
     }
 
     private Ride load(UUID rideId) {

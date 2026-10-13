@@ -1,6 +1,8 @@
 package com.rydex.driver.matching;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -13,7 +15,9 @@ import com.rydex.driver.IntegrationTest;
 import com.rydex.driver.TestTokens;
 import com.rydex.events.RidePayload;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -292,8 +296,92 @@ class MatchingFlowTests extends IntegrationTest {
         var ride = new RidePayload(UUID.randomUUID(), null, RideType.ECONOMY, CENTER, AIRPORT,
                 new BigDecimal("339.00"), 22111, 1359, null);
 
-        assertThat(matching.onRideRequested(rideId, ride)).isFalse();
+        assertThat(matching.onRideRequested(rideId, ride, Instant.now())).isFalse();
         assertThat(jdbc.sql("SELECT count(*) FROM match_jobs WHERE ride_id = :id").param("id", rideId)
                 .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void busyDriversNearbyDoNotHideFreeDriversFurtherOut() {
+        TestDriver busyNearby = onlineDriver(RideType.ECONOMY, north(CENTER, 500));
+        TestDriver freeFurtherOut = onlineDriver(RideType.ECONOMY, north(CENTER, 4_000)); // outside 3 km, inside 5 km
+        // busyNearby is holding another ride's offer
+        redis.opsForValue().set(RedisKeys.driverLock(busyNearby.id()), UUID.randomUUID().toString(), Duration.ofSeconds(30));
+
+        UUID rideId = requestRide(RideType.ECONOMY, CENTER);
+
+        awaitOfferTo(freeFurtherOut, rideId);
+        assertNoOffer(busyNearby);
+    }
+
+    @Test
+    void driverStillSearchableInRedisButOnATripIsSkippedAndTheProjectionRepaired() {
+        TestDriver stale = onlineDriver(RideType.ECONOMY, north(CENTER, 300));
+        TestDriver next = onlineDriver(RideType.ECONOMY, north(CENTER, 900));
+        // the driver started a trip, but the after-commit Redis update was lost
+        jdbc.sql("UPDATE drivers SET status = 'ON_TRIP', current_ride_id = :r WHERE user_id = :id")
+                .param("r", UUID.randomUUID()).param("id", stale.id()).update();
+
+        UUID rideId = requestRide(RideType.ECONOMY, CENTER);
+
+        awaitOfferTo(next, rideId);
+        assertNoOffer(stale);
+        await().atMost(WAIT).untilAsserted(() -> {
+            assertThat(redis.opsForHash().get(RedisKeys.driverState(stale.id()), "status")).isEqualTo("ON_TRIP");
+            assertThat(redis.opsForZSet().score(RedisKeys.driversGeo(RideType.ECONOMY), stale.id().toString())).isNull();
+        });
+    }
+
+    @Test
+    void aJobLookedAtBeforeItsOfferExpiresIsDueAgainAtExpiry() {
+        TestDriver d = onlineDriver(RideType.COMFORT, north(CENTER, 300));
+        UUID rideId = requestRide(RideType.COMFORT, CENTER);
+        awaitOfferTo(d, rideId);
+
+        // e.g. a second instance whose clock runs ahead claimed the job early
+        assertThatCode(() -> matching.process(rideId)).doesNotThrowAnyException();
+
+        assertThat(jobStatus(rideId)).isEqualTo("OFFERED");
+        assertThat(jdbc.sql("""
+                SELECT j.due_at = o.expires_at FROM match_jobs j
+                JOIN match_offers o ON o.ride_id = j.ride_id AND o.outcome = 'PENDING'
+                WHERE j.ride_id = :id""").param("id", rideId).query(Boolean.class).single()).isTrue();
+    }
+
+    @Test
+    void anOfferThatFailsToSaveReleasesTheDriverLock() {
+        TestDriver d = onlineDriver(RideType.XL, north(CENTER, 300));
+        jdbc.sql("ALTER TABLE match_offers ADD CONSTRAINT ck_test_refuse_driver CHECK (driver_id <> '" + d.id() + "')").update();
+        try {
+            UUID rideId = requestRide(RideType.XL, CENTER);
+            // let the scheduler claim the job and make (and fail) its own attempt first
+            await().atMost(WAIT).until(() -> jdbc.sql("SELECT due_at > now() + interval '5 seconds' FROM match_jobs WHERE ride_id = :id")
+                    .param("id", rideId).query(Boolean.class).single());
+            await().pollDelay(Duration.ofMillis(500)).atMost(WAIT).until(() -> locks.holder(d.id()) == null);
+
+            assertThatThrownBy(() -> matching.process(rideId)).isInstanceOf(RuntimeException.class);
+
+            assertThat(locks.holder(d.id())).isNull();
+            assertNoOffer(d);
+        } finally {
+            jdbc.sql("ALTER TABLE match_offers DROP CONSTRAINT ck_test_refuse_driver").update();
+        }
+    }
+
+    @Test
+    void searchDeadlineCountsFromWhenTheRiderBooked() {
+        Instant now = Instant.now();
+        UUID fresh = requestRide(RideType.ECONOMY, CENTER, now);
+        UUID waitedAnHour = requestRide(RideType.ECONOMY, CENTER, now.minus(Duration.ofHours(1)));
+
+        // search-timeout is 7 s and offer-timeout (the minimum) 2 s in tests
+        assertThat(deadline(fresh)).isBetween(now.plusSeconds(6), now.plusSeconds(8));
+        assertThat(deadline(waitedAnHour)).isBetween(now.plusSeconds(1), now.plusSeconds(4));
+        awaitJobStatus(waitedAnHour, "NO_DRIVER_FOUND");
+    }
+
+    private Instant deadline(UUID rideId) {
+        return jdbc.sql("SELECT search_deadline FROM match_jobs WHERE ride_id = :id").param("id", rideId)
+                .query(Timestamp.class).single().toInstant();
     }
 }

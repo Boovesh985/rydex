@@ -240,6 +240,12 @@ Check "RIDE_CANCELLED reaches driver-service: the offer is withdrawn" $withdrawn
 $job = Api GET "$DriverUrl/api/admin/matching/$ride2" $admin
 Check "the matching job is CANCELLED" ($job.Body.status -eq "CANCELLED") "offers: $(@($job.Body.offers).Count)"
 
+# admin recovery for a driver stuck on a trip (ADR 0010); driver01 is not on one, so nothing to release
+$driverId = (Api GET "$DriverUrl/api/drivers/me" $driverToken).Body.id
+$release = "$DriverUrl/api/admin/drivers/$driverId/release"
+Check "only admins can release a driver" ((Api POST $release $driverToken).Status -eq 403)
+Check "releasing a driver who is not on a trip is refused (409)" ((Api POST $release $admin).Status -eq 409)
+
 Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
 
 # ---------------------------------------------------------------- summary

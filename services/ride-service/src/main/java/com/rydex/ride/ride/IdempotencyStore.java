@@ -11,12 +11,17 @@ import org.springframework.stereotype.Component;
 /**
  * Idempotency-Key support for POST /rides. A key is claimed with SET NX, then bound to
  * the created ride id. A retry with the same key returns the original ride.
+ *
+ * <p>The claim itself is short-lived: if this instance dies mid-booking, the key frees up after
+ * a minute instead of answering "still being processed" for a day.
  */
 @Component
 class IdempotencyStore {
 
     private static final String PENDING = "PENDING";
     private static final Duration TTL = Duration.ofHours(24);
+    /** Far longer than a booking takes (routing times out after 8 s). */
+    static final Duration PENDING_TTL = Duration.ofMinutes(1);
 
     private final StringRedisTemplate redis;
 
@@ -27,7 +32,7 @@ class IdempotencyStore {
     /** Empty if the key was claimed by this call; otherwise the ride created by the earlier call. */
     Optional<UUID> begin(UUID userId, String key) {
         String redisKey = RedisKeys.idempotency(userId, key);
-        if (Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(redisKey, PENDING, TTL))) {
+        if (Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(redisKey, PENDING, PENDING_TTL))) {
             return Optional.empty();
         }
         String value = redis.opsForValue().get(redisKey);

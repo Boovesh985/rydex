@@ -92,8 +92,14 @@ public class MatchJob {
     protected MatchJob() {
     }
 
-    /** A new job is due immediately, so the scheduler starts searching on its next tick. */
-    public static MatchJob create(UUID rideId, RidePayload ride, Instant now, Duration searchTimeout) {
+    /**
+     * A new job is due immediately, so the scheduler starts searching on its next tick. The search
+     * deadline counts from when the rider booked, not from when this service heard about it, so a
+     * request that waited in Kafka (e.g. while this service was down) does not get a fresh 90 s.
+     * It still gets at least {@code minSearch}, so there is always one real search.
+     */
+    public static MatchJob create(UUID rideId, RidePayload ride, Instant requestedAt, Instant now,
+                                  Duration searchTimeout, Duration minSearch) {
         MatchJob j = new MatchJob();
         j.rideId = rideId;
         j.riderId = ride.riderId();
@@ -109,7 +115,9 @@ public class MatchJob {
         j.estDurationS = ride.estDurationS() == null ? 0 : ride.estDurationS();
         j.status = MatchJobStatus.SEARCHING;
         j.dueAt = now;
-        j.searchDeadline = now.plus(searchTimeout);
+        Instant deadline = requestedAt.plus(searchTimeout);
+        Instant earliest = now.plus(minSearch);
+        j.searchDeadline = deadline.isBefore(earliest) ? earliest : deadline;
         j.createdAt = now;
         j.updatedAt = now;
         return j;
@@ -133,8 +141,11 @@ public class MatchJob {
         updatedAt = now;
     }
 
+    /** Look at the job again at {@code at}: a search to retry, or an offer to check on when it expires. */
     void retryAt(Instant at, Instant now) {
-        require(MatchJobStatus.SEARCHING);
+        if (!status.isActive()) {
+            throw new IllegalStateException("match job " + rideId + " is " + status + ", not active");
+        }
         dueAt = at;
         updatedAt = now;
     }

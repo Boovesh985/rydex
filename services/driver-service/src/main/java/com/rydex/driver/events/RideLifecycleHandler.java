@@ -41,7 +41,7 @@ public class RideLifecycleHandler {
         }
         UUID rideId = parseId(event.rideId());
         switch (event.eventType()) {
-            case RIDE_REQUESTED -> matching.onRideRequested(rideId, requireBookable(event));
+            case RIDE_REQUESTED -> matching.onRideRequested(rideId, requireBookable(event), event.occurredAt());
             case RIDE_CANCELLED -> matching.onRideCancelled(rideId);
             case RIDE_COMPLETED -> matching.onRideCompleted(rideId);
             default -> throw new IllegalArgumentException("not a ride lifecycle event: " + event.eventType());

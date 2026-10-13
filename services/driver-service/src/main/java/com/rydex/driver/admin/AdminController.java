@@ -4,6 +4,8 @@ import com.rydex.common.RedisKeys;
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
 import com.rydex.common.geo.Geohash;
+import com.rydex.driver.driver.DriverDtos.DriverView;
+import com.rydex.driver.driver.DriverService;
 import com.rydex.driver.driver.DriverStatus;
 import com.rydex.driver.matching.Candidate;
 import com.rydex.driver.matching.CandidateFinder;
@@ -27,14 +29,15 @@ import java.util.UUID;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Admin views of the marketplace: the geohash grid, live drivers and matching internals. ADMIN only. */
+/** Admin views of the marketplace (geohash grid, live drivers, matching internals) and driver recovery. ADMIN only. */
 @RestController
 @RequestMapping("/api/admin")
-@Tag(name = "Admin", description = "Geohash grid, live drivers and matching diagnostics (ADMIN role)")
+@Tag(name = "Admin", description = "Geohash grid, live drivers, matching diagnostics and driver recovery (ADMIN role)")
 class AdminController {
 
     /** Labels for {@link Geohash#grid3x3}: centre, then N, NE, E, SE, S, SW, W, NW. */
@@ -46,16 +49,19 @@ class AdminController {
     private final CandidateFinder finder;
     private final CandidateRanker ranker;
     private final MatchingService matching;
+    private final DriverService drivers;
     private final StringRedisTemplate redis;
     private final Clock clock;
 
     AdminController(PresenceStore presence, PresenceProperties presenceProps, CandidateFinder finder,
-                    CandidateRanker ranker, MatchingService matching, StringRedisTemplate redis, Clock clock) {
+                    CandidateRanker ranker, MatchingService matching, DriverService drivers, StringRedisTemplate redis,
+                    Clock clock) {
         this.presence = presence;
         this.presenceProps = presenceProps;
         this.finder = finder;
         this.ranker = ranker;
         this.matching = matching;
+        this.drivers = drivers;
         this.redis = redis;
         this.clock = clock;
     }
@@ -122,6 +128,12 @@ class AdminController {
     @Operation(summary = "A ride's matching job and every offer it made")
     JobView job(@PathVariable UUID rideId) {
         return matching.job(rideId).orElseThrow(() -> ApiException.notFound("Matching job"));
+    }
+
+    @PostMapping("/drivers/{driverId}/release")
+    @Operation(summary = "Free a driver stuck ON_TRIP whose ride is already over (they go OFFLINE)")
+    DriverView release(@PathVariable UUID driverId) {
+        return drivers.release(driverId);
     }
 
     private long counter(String key) {

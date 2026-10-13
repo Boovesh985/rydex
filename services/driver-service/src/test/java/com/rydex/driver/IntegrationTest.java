@@ -13,6 +13,7 @@ import com.rydex.events.RidePayload;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -171,9 +172,14 @@ public abstract class IntegrationTest {
 
     /** Simulates the RIDE_REQUESTED event (Phase 3 delivers it via Kafka). */
     protected UUID requestRide(RideType type, GeoPoint pickup) {
+        return requestRide(type, pickup, Instant.now());
+    }
+
+    /** A RIDE_REQUESTED event for a ride the rider booked at {@code requestedAt}. */
+    protected UUID requestRide(RideType type, GeoPoint pickup, Instant requestedAt) {
         UUID rideId = UUID.randomUUID();
         matching.onRideRequested(rideId, new RidePayload(UUID.randomUUID(), null, type, pickup, AIRPORT,
-                new BigDecimal("339.00"), 22111, 1359, null));
+                new BigDecimal("339.00"), 22111, 1359, null), requestedAt);
         return rideId;
     }
 

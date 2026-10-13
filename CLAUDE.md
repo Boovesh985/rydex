@@ -40,3 +40,4 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 - [x] Phase 1 — ride-service: auth (RS256/JWKS, rotating refresh), places/route proxy, estimate, booking, state machine, outbox rows, OpenAPI
 - [x] Phase 2 — driver-service: profiles, availability (Redis GEO + Lua), geohash/radius search, OSRM ETA ranking, 15 s offers with driver locks, leased matching scheduler, admin grid (ADR 0008)
 - [x] Phase 3 — Kafka: libs/messaging outbox relay, idempotent consumers, retries + DLT; ride ⇄ driver event flow; CI e2e job (ADR 0009)
+- [x] Post-Phase-3 audit fixes: ~5 min listener retries, single-active outbox relay, unmatched-ride sweeper + admin driver release (ADR 0010), matching radius/projection/lock fixes

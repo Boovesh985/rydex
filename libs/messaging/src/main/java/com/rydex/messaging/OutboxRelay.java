@@ -20,16 +20,24 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Publishes outbox rows to Kafka (master prompt §8: poll every 500 ms, mark published).
  *
- * <p>Rows are claimed with {@code FOR UPDATE SKIP LOCKED}, so several instances can relay
- * without publishing the same row twice in the normal case. Records are sent one at a time
- * in outbox order and each send waits for the broker's acknowledgement: if a send fails the
- * pass stops there, so events of one ride are never published out of order. Delivery is
- * at-least-once (a crash between send and commit republishes); consumers deduplicate by
- * event id.
+ * <p>Only one relay per service publishes at a time: each pass first takes a transaction-scoped
+ * Postgres advisory lock named after the service's schema, and a pass that cannot get it does
+ * nothing. With two relays sharing the work, one could publish a ride's second event while the
+ * other still held its first, so the lock is what keeps per-ride order across instances.
+ * Records are sent one at a time in {@code seq} order and each send waits for the broker's
+ * acknowledgement: if a send fails the pass stops there, so events of one ride are never
+ * published out of order. Delivery is at-least-once (a crash between send and commit
+ * republishes); consumers deduplicate by event id.
  */
 public class OutboxRelay implements SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
+
+    /**
+     * Advisory locks are database-wide and every service has its own schema in the one database,
+     * so the key is derived from the schema: each service's relays exclude only each other.
+     */
+    static final String LOCK_SQL = "SELECT pg_try_advisory_xact_lock(hashtext(current_schema() || '.outbox-relay'))";
 
     private record Row(UUID id, String topic, String key, String eventType, String payload) {
     }
@@ -54,12 +62,14 @@ public class OutboxRelay implements SmartLifecycle {
     /** Publishes up to one batch; returns how many rows were published. */
     public int relayOnce() {
         Integer published = tx.execute(status -> {
+            if (!Boolean.TRUE.equals(jdbc.sql(LOCK_SQL).query(Boolean.class).single())) {
+                return 0; // another instance is relaying this service's outbox
+            }
             List<Row> rows = jdbc.sql("""
                     SELECT id, topic, msg_key, event_type, payload::text AS payload FROM outbox
                     WHERE published_at IS NULL
                     ORDER BY seq
                     LIMIT :limit
-                    FOR UPDATE SKIP LOCKED
                     """)
                     .param("limit", props.batchSize())
                     .query((rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getString("topic"),

@@ -14,6 +14,9 @@ import com.rydex.driver.support.AfterCommit;
 import com.rydex.driver.web.ApiException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** Driver onboarding, the online/offline toggle and location heartbeats. */
 @Service
 public class DriverService {
+
+    private static final Logger log = LoggerFactory.getLogger(DriverService.class);
 
     private final DriverRepository drivers;
     private final PresenceStore presence;
@@ -107,6 +112,25 @@ public class DriverService {
             Driver driver = load(user);
             presence.setStatus(driver.getId(), driver.getStatus(), driver.getVehicleType());
         }
+    }
+
+    /**
+     * Admin: frees a driver stuck ON_TRIP (their ride's completion or cancellation never arrived,
+     * e.g. it ended up in the dead-letter topic). Only for rides that are over in ride-service.
+     */
+    @Transactional
+    public DriverView release(UUID driverId) {
+        Driver driver = drivers.findById(driverId).orElseThrow(() -> ApiException.notFound("Driver"));
+        UUID rideId;
+        try {
+            rideId = driver.release(clock.instant());
+        } catch (IllegalStateException e) {
+            throw ApiException.conflict(e.getMessage());
+        }
+        drivers.flush();
+        AfterCommit.run(() -> presence.setStatus(driver.getId(), DriverStatus.OFFLINE, driver.getVehicleType()));
+        log.warn("Admin released driver {} from ride {}", driverId, rideId);
+        return DriverView.of(driver, false, presence.location(driverId).orElse(null));
     }
 
     private DriverView view(Driver d) {

@@ -28,10 +28,16 @@ public record MessagingProperties(
             @DefaultValue("1h") Duration cleanupInterval) {
     }
 
-    /** Listener retries: {@code maxRetries} attempts after the first, backing off exponentially, then the DLT. */
+    /**
+     * Listener retries: {@code maxRetries} attempts after the first, backing off exponentially up to
+     * {@code maxInterval}, then the DLT. The defaults (1, 2, 4 ... 32 s, then 60 s) keep retrying for
+     * about 5 minutes, so a database or Redis outage of that length loses no events. Malformed
+     * events ({@link NonRetryableEventException}) go to the DLT straight away.
+     */
     public record Retry(
             @DefaultValue("1s") Duration initialInterval,
             @DefaultValue("2.0") double multiplier,
-            @DefaultValue("3") int maxRetries) {
+            @DefaultValue("1m") Duration maxInterval,
+            @DefaultValue("10") int maxRetries) {
     }
 }

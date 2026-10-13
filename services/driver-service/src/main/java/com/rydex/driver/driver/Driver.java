@@ -113,6 +113,22 @@ public class Driver {
         return true;
     }
 
+    /**
+     * Admin recovery for a driver stuck ON_TRIP because the end of their ride never reached this
+     * service. They go OFFLINE rather than AVAILABLE, so they are offered nothing until they choose
+     * to go online again. Returns the ride they were released from.
+     */
+    public UUID release(Instant now) {
+        if (status != DriverStatus.ON_TRIP) {
+            throw new IllegalStateException("Driver is " + status + ", not on a trip");
+        }
+        UUID rideId = currentRideId;
+        status = DriverStatus.OFFLINE;
+        currentRideId = null;
+        updatedAt = now;
+        return rideId;
+    }
+
     public UUID getId() {
         return id;
     }

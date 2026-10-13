@@ -87,13 +87,16 @@ public class MatchingService {
 
     // ------------------------------------------------------------------ ride events
 
-    /** RIDE_REQUESTED: start matching. Idempotent per ride; returns false for a duplicate. */
+    /**
+     * RIDE_REQUESTED: start matching. Idempotent per ride; returns false for a duplicate.
+     * {@code requestedAt} is when the rider booked (the event's time): the search deadline counts from it.
+     */
     @Transactional
-    public boolean onRideRequested(UUID rideId, RidePayload ride) {
+    public boolean onRideRequested(UUID rideId, RidePayload ride, Instant requestedAt) {
         if (jobs.existsById(rideId)) {
             return false;
         }
-        jobs.save(MatchJob.create(rideId, ride, clock.instant(), props.searchTimeout()));
+        jobs.save(MatchJob.create(rideId, ride, requestedAt, clock.instant(), props.searchTimeout(), props.offerTimeout()));
         log.info("Matching started for ride {} ({}, pickup {},{})", rideId, ride.rideType(),
                 ride.pickup().lat(), ride.pickup().lng());
         return true;
@@ -137,7 +140,20 @@ public class MatchingService {
     private record SearchStep(MatchJob job, Set<UUID> alreadyOffered) {
     }
 
-    /** One step for a claimed job: expire a timed-out offer, then search and offer to the best driver. */
+    /** What happened when offering the ride to one candidate. */
+    private enum OfferAttempt {
+        OFFERED,
+        /** Locked by another ride's offer, or not actually available: try the next candidate. */
+        DRIVER_BUSY,
+        /** The job was cancelled or moved on meanwhile: stop. */
+        JOB_CLOSED
+    }
+
+    /**
+     * One step for a claimed job: expire a timed-out offer, then search and offer to the best driver.
+     * The radius widens (3, 5, 8 km) not only when nobody is inside it but also when everybody inside
+     * is busy, e.g. holding another ride's offer, so free drivers further out are still reached.
+     */
     public void process(UUID rideId) {
         SearchStep step = tx.execute(s -> prepare(rideId));
         if (step == null) {
@@ -145,22 +161,37 @@ public class MatchingService {
         }
         MatchJob job = step.job();
         GeoPoint pickup = job.getPickup();
-        List<Candidate.Ranked> ranked = ranker.rank(pickup, finder.find(job.getRideType(), pickup, step.alreadyOffered()));
-        for (Candidate.Ranked c : ranked) {
-            if (!locks.tryLock(c.driverId(), rideId)) {
-                continue; // holding an offer for another ride
+        Set<UUID> tried = new HashSet<>(step.alreadyOffered());
+        for (double radiusKm : props.searchRadiiKm()) {
+            List<Candidate> found = finder.within(job.getRideType(), pickup, radiusKm, tried);
+            for (Candidate.Ranked c : ranker.rank(pickup, found)) {
+                tried.add(c.driverId());
+                if (tryOffer(rideId, c) != OfferAttempt.DRIVER_BUSY) {
+                    return;
+                }
             }
-            if (!presence.isAvailable(c.driverId())) {
-                locks.release(c.driverId(), rideId); // went offline / on a trip since the GEO index was read
-                continue;
-            }
-            Boolean offered = tx.execute(s -> makeOffer(rideId, c));
-            if (!Boolean.TRUE.equals(offered)) {
-                locks.release(c.driverId(), rideId); // job was cancelled meanwhile
-            }
-            return;
         }
         tx.executeWithoutResult(s -> nobodyFound(rideId));
+    }
+
+    /** Locks the driver, then records the offer; the lock is kept only if the offer was made. */
+    private OfferAttempt tryOffer(UUID rideId, Candidate.Ranked c) {
+        if (!locks.tryLock(c.driverId(), rideId)) {
+            return OfferAttempt.DRIVER_BUSY; // holding an offer for another ride
+        }
+        OfferAttempt result = OfferAttempt.DRIVER_BUSY;
+        try {
+            if (!presence.isAvailable(c.driverId())) {
+                return result; // went offline / on a trip since the GEO index was read
+            }
+            result = tx.execute(s -> makeOffer(rideId, c));
+            return result;
+        } finally {
+            // also on failure: a lock left behind would hide the driver from every ride until it expired
+            if (result != OfferAttempt.OFFERED) {
+                locks.release(c.driverId(), rideId);
+            }
+        }
     }
 
     private SearchStep prepare(UUID rideId) {
@@ -192,10 +223,20 @@ public class MatchingService {
         return new SearchStep(job, new HashSet<>(offers.driverIdsOffered(rideId)));
     }
 
-    private boolean makeOffer(UUID rideId, Candidate.Ranked c) {
+    private OfferAttempt makeOffer(UUID rideId, Candidate.Ranked c) {
         MatchJob job = jobs.findById(rideId).orElse(null);
         if (job == null || job.getStatus() != MatchJobStatus.SEARCHING) {
-            return false;
+            return OfferAttempt.JOB_CLOSED;
+        }
+        // Redis is a projection that a failed after-commit write can leave stale; Postgres decides
+        Driver driver = drivers.findById(c.driverId()).orElse(null);
+        if (driver == null || driver.getStatus() != DriverStatus.AVAILABLE || driver.getVehicleType() != job.getRideType()) {
+            if (driver != null) {
+                AfterCommit.run(() -> presence.setStatus(driver.getId(), driver.getStatus(), driver.getVehicleType()));
+                log.warn("Driver {} is {} ({}) in Postgres but was searchable in Redis; projection repaired",
+                        driver.getId(), driver.getStatus(), driver.getVehicleType());
+            }
+            return OfferAttempt.DRIVER_BUSY;
         }
         Instant now = clock.instant();
         Instant expiresAt = now.plus(props.offerTimeout());
@@ -205,7 +246,7 @@ public class MatchingService {
         AfterCommit.run(() -> publishOffer(offer));
         log.info("Ride {} offered to driver {} (attempt {}, {} m away, ETA {} s{})", rideId, c.driverId(),
                 offer.getAttempt(), c.distanceM(), c.etaS(), c.etaEstimated() ? ", estimated" : "");
-        return true;
+        return OfferAttempt.OFFERED;
     }
 
     private void nobodyFound(UUID rideId) {

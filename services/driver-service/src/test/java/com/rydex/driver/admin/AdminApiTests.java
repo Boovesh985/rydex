@@ -1,6 +1,7 @@
 package com.rydex.driver.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.rydex.common.RedisKeys;
 import com.rydex.common.RideType;
@@ -87,5 +88,28 @@ class AdminApiTests extends IntegrationTest {
     void unknownMatchingJobIs404() {
         assertThat(api().get("/api/admin/matching/" + UUID.randomUUID(), TestTokens.admin()).getStatusCode().value())
                 .isEqualTo(404);
+    }
+
+    @Test
+    void adminCanReleaseADriverStuckOnATrip() {
+        TestDriver d = onlineDriver(RideType.ECONOMY, CENTER);
+        UUID rideId = requestRide(RideType.ECONOMY, CENTER);
+        await().atMost(WAIT).until(() -> currentOffer(d).getStatusCode().value() == 200);
+        api().post("/api/drivers/me/offers/" + rideId + "/accept", d.token(), null);
+        String path = "/api/admin/drivers/" + d.id() + "/release";
+        assertThat(api().post(path, d.token(), null).getStatusCode().value()).isEqualTo(403);
+
+        // the ride's RIDE_COMPLETED never arrived (e.g. dead-lettered)
+        var released = api().post(path, TestTokens.admin(), null);
+
+        assertThat(released.getStatusCode().value()).isEqualTo(200);
+        assertThat(released.getBody().path("status").asString()).isEqualTo("OFFLINE");
+        assertThat(released.getBody().path("currentRideId").isNull()).isTrue();
+        assertThat(redis.opsForHash().get(RedisKeys.driverState(d.id()), "status")).isEqualTo("OFFLINE");
+        // the driver can go online again by themselves
+        goOnline(d, CENTER);
+        assertThat(api().post(path, TestTokens.admin(), null).getStatusCode().value()).isEqualTo(409);
+        assertThat(api().post("/api/admin/drivers/" + UUID.randomUUID() + "/release", TestTokens.admin(), null)
+                .getStatusCode().value()).isEqualTo(404);
     }
 }

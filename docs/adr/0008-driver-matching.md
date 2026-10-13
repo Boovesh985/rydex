@@ -14,7 +14,7 @@ driver-service has to find the nearest free driver of the right ride type within
   - `geo:drivers:{type}` and `supply:{geohash6}` are the search indexes.
 - **Writes to several keys are single Lua scripts** (heartbeat, availability change, eviction). A heartbeat re-indexes a driver only if their projection says AVAILABLE. A status change and a concurrent heartbeat therefore cannot leave a stale GEO entry.
 - **Silent drivers:** the reaper evicts drivers silent for more than 30 s from the indexes but keeps their status, so their next heartbeat makes them searchable again. If the projection is missing (e.g. Redis was flushed), the next heartbeat rebuilds it from Postgres.
-- **Search:** `GEOSEARCH geo:drivers:{type} FROMLONLAT … BYRADIUS r km ASC COUNT n`, with r = 3, then 5, then 8 km until someone is found. Redis answers a radius query by scanning the geohash cell that covers the radius plus its 8 neighbours, which is the 3×3 search of the reference design. Our explicit geohash-6 grid (`common-events` `Geohash`) is used for supply and demand counting and for the admin grid view.
+- **Search:** `GEOSEARCH geo:drivers:{type} FROMLONLAT … BYRADIUS r km ASC COUNT n`, with r = 3, then 5, then 8 km. The radius widens when nobody inside it can take the offer, not only when nobody is inside it: drivers holding another ride's offer (locked) must not hide free drivers further out. (Revised 2026-10-13 after an audit.) Redis answers a radius query by scanning the geohash cell that covers the radius plus its 8 neighbours, which is the 3×3 search of the reference design. Our explicit geohash-6 grid (`common-events` `Geohash`) is used for supply and demand counting and for the admin grid view.
 - **Ranking:**
   - Candidates are ranked by OSRM `table` ETA to the pickup, compared in whole minutes, then by rating, then by distance.
   - The OSRM call has a circuit breaker. On failure, ETA falls back to straight-line distance × 1.35 at 22 km/h, so matching never stops.
@@ -22,6 +22,8 @@ driver-service has to find the nearest free driver of the right ride type within
   - A driver is locked with `SET driver:{id}:lock <rideId> NX PX 20000` before an offer is written. Only the owner can release the lock (Lua compare-and-delete).
   - `match_offers` has a unique index on `(ride_id, driver_id)`, so a ride is never offered to the same driver twice.
   - The live offer is mirrored in `ride:{id}:offer` (TTL 15 s).
+  - Before writing the offer, the driver's status and vehicle type are re-read from Postgres in the same transaction. Redis is only a projection, and a failed after-commit write could leave an ON_TRIP driver searchable. A mismatch skips the driver and repairs the Redis projection.
+  - If writing the offer fails, the lock is released at once instead of hiding the driver until it expires.
 - **Scheduling:**
   - Every job has a `due_at`. A poller claims due jobs (new rides, expired offers, searches to retry) with `UPDATE … WHERE ride_id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING`. The claim pushes `due_at` forward by a lease and bumps `version`.
   - Several instances can poll without blocking each other, and a crashed step is retried when its lease runs out.
@@ -30,7 +32,7 @@ driver-service has to find the nearest free driver of the right ride type within
   - Accepting is one transaction: close the offer, assign the job, set the driver to ON_TRIP and write `DRIVER_ASSIGNED` to the outbox.
   - Optimistic locking turns a race with offer expiry into a 409.
   - Redis is updated after commit.
-- **Giving up:** `NO_DRIVER_FOUND` is emitted after 5 offers, or when nobody can be found for 90 s.
+- **Giving up:** `NO_DRIVER_FOUND` is emitted after 5 offers, or when nobody can be found for 90 s. The 90 s count from when the rider booked (ADR 0010).
 - **Phase 2 interface:**
   - `MatchingService.onRideRequested`, `onRideCancelled` and `onRideCompleted` are plain idempotent methods. Phase 3 calls them from Kafka consumers.
   - Drivers poll `GET /api/drivers/me/offer` until Phase 4 adds the WebSocket push.

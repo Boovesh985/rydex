@@ -17,10 +17,13 @@ import com.rydex.ride.IntegrationTest;
 import com.rydex.ride.KafkaProbe;
 import com.rydex.ride.geo.RouteResult;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +44,9 @@ class RideEventFlowTests extends IntegrationTest {
 
     @Autowired
     JdbcClient jdbc;
+
+    @Autowired
+    DataSource dataSource;
 
     @BeforeEach
     void stubRouting() {
@@ -78,6 +84,11 @@ class RideEventFlowTests extends IntegrationTest {
         await().atMost(WAIT).untilAsserted(() -> assertThat(ride(b).path("status").asString()).isEqualTo(status));
     }
 
+    private int unpublished(Booked b) {
+        return jdbc.sql("SELECT count(*) FROM outbox WHERE aggregate_id = :id AND published_at IS NULL")
+                .param("id", b.rideId().toString()).query(Integer.class).single();
+    }
+
     private int processed(UUID eventId) {
         return jdbc.sql("SELECT count(*) FROM processed_events WHERE event_id = :id").param("id", eventId)
                 .query(Integer.class).single();
@@ -112,6 +123,24 @@ class RideEventFlowTests extends IntegrationTest {
         assertThat(records).extracting(r -> KafkaProbe.header(r, "eventType"))
                 .containsExactly("RIDE_REQUESTED", "RIDE_CANCELLED");
         assertThat(records.get(0).partition()).isEqualTo(records.get(1).partition());
+    }
+
+    @Test
+    void onlyOneRelayPublishesAtATime() throws Exception {
+        String lock = "hashtext(current_schema() || '.outbox-relay')";
+        Booked b;
+        try (Connection otherInstance = dataSource.getConnection(); Statement st = otherInstance.createStatement()) {
+            // what another instance's relay holds during its pass
+            st.execute("SELECT pg_advisory_lock(" + lock + ")");
+            try {
+                b = book();
+                await().during(Duration.ofSeconds(1)).atMost(WAIT).until(() -> unpublished(b) == 1);
+            } finally {
+                st.execute("SELECT pg_advisory_unlock(" + lock + ")");
+            }
+        }
+
+        await().atMost(WAIT).until(() -> unpublished(b) == 0);
     }
 
     @Test

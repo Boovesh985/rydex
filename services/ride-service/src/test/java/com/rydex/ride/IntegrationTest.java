@@ -37,7 +37,10 @@ import org.testcontainers.utility.DockerImageName;
         "rydex.geo.nominatim-interval=10ms",
         "rydex.messaging.create-topics=true",
         "rydex.messaging.outbox.poll-interval=100ms",
-        "rydex.messaging.retry.initial-interval=100ms"
+        "rydex.messaging.retry.initial-interval=100ms",
+        // tests run the unmatched-ride sweep themselves, on rides they backdate
+        "rydex.rides.unmatched-timeout=1h",
+        "rydex.rides.sweep-interval=1h"
 })
 public abstract class IntegrationTest {
 

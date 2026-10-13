@@ -15,9 +15,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Finds the nearest available drivers of a ride type with {@code GEOSEARCH ... BYRADIUS ... ASC},
- * widening the radius (3 → 5 → 8 km by default) until someone is found. Redis answers a radius
- * query by scanning the geohash cell that covers the radius plus its 8 neighbours, which is the
- * 3x3 geohash search of master prompt §7.
+ * one radius at a time (3 → 5 → 8 km by default); matching widens it while nobody suitable is
+ * found. Redis answers a radius query by scanning the geohash cell that covers the radius plus its
+ * 8 neighbours, which is the 3x3 geohash search of master prompt §7.
  */
 @Component
 public class CandidateFinder {
@@ -30,19 +30,24 @@ public class CandidateFinder {
         this.props = props;
     }
 
-    /** Nearest first; drivers in {@code exclude} (already offered this ride) are skipped. */
+    /** Candidates in the smallest radius that has any; drivers in {@code exclude} are skipped. */
     public List<Candidate> find(RideType type, GeoPoint pickup, Collection<UUID> exclude) {
-        int limit = props.candidatesPerSearch();
         for (double radiusKm : props.searchRadiiKm()) {
-            List<Candidate> found = search(type, pickup, radiusKm, limit + exclude.size()).stream()
-                    .filter(c -> !exclude.contains(c.driverId()))
-                    .limit(limit)
-                    .toList();
+            List<Candidate> found = within(type, pickup, radiusKm, exclude);
             if (!found.isEmpty()) {
                 return found;
             }
         }
         return List.of();
+    }
+
+    /** Up to {@code candidatesPerSearch} drivers within {@code radiusKm}, nearest first, skipping {@code exclude}. */
+    public List<Candidate> within(RideType type, GeoPoint pickup, double radiusKm, Collection<UUID> exclude) {
+        int limit = props.candidatesPerSearch();
+        return search(type, pickup, radiusKm, limit + exclude.size()).stream()
+                .filter(c -> !exclude.contains(c.driverId()))
+                .limit(limit)
+                .toList();
     }
 
     private List<Candidate> search(RideType type, GeoPoint p, double radiusKm, int count) {

@@ -68,4 +68,4 @@ docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10).
