@@ -1,7 +1,8 @@
 package com.rydex.driver.driver;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.common.RideType;
-import com.rydex.driver.presence.DriverLocation;
+import com.rydex.presence.DriverLocation;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;

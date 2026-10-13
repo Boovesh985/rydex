@@ -56,6 +56,7 @@ import tools.jackson.databind.JsonNode;
                 "rydex.matching.lease=10s",
                 // tests call PresenceReaper.reap() themselves
                 "rydex.presence.reap-interval=1h",
+                "rydex.presence.reconcile-interval=1h",
                 "rydex.messaging.create-topics=true",
                 "rydex.messaging.outbox.poll-interval=100ms",
                 "rydex.messaging.retry.initial-interval=100ms"

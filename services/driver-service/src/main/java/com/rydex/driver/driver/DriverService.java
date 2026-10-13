@@ -1,17 +1,18 @@
 package com.rydex.driver.driver;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.driver.driver.DriverDtos.Availability;
 import com.rydex.driver.driver.DriverDtos.DriverView;
 import com.rydex.driver.driver.DriverDtos.LocationRequest;
 import com.rydex.driver.driver.DriverDtos.StatusRequest;
 import com.rydex.driver.driver.DriverDtos.UpsertProfileRequest;
 import com.rydex.driver.matching.MatchingService;
-import com.rydex.driver.presence.DriverLocation;
-import com.rydex.driver.presence.PresenceStore;
-import com.rydex.driver.presence.PresenceStore.HeartbeatResult;
 import com.rydex.driver.security.AuthUser;
 import com.rydex.driver.support.AfterCommit;
 import com.rydex.driver.web.ApiException;
+import com.rydex.presence.DriverLocation;
+import com.rydex.presence.PresenceStore;
+import com.rydex.presence.PresenceStore.HeartbeatResult;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;

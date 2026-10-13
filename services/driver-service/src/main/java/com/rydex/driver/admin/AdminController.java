@@ -1,21 +1,21 @@
 package com.rydex.driver.admin;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.common.RedisKeys;
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
 import com.rydex.common.geo.Geohash;
 import com.rydex.driver.driver.DriverDtos.DriverView;
 import com.rydex.driver.driver.DriverService;
-import com.rydex.driver.driver.DriverStatus;
 import com.rydex.driver.matching.Candidate;
 import com.rydex.driver.matching.CandidateFinder;
 import com.rydex.driver.matching.CandidateRanker;
 import com.rydex.driver.matching.MatchingDtos.JobView;
 import com.rydex.driver.matching.MatchingService;
-import com.rydex.driver.presence.DriverLocation;
 import com.rydex.driver.presence.PresenceProperties;
-import com.rydex.driver.presence.PresenceStore;
 import com.rydex.driver.web.ApiException;
+import com.rydex.presence.DriverLocation;
+import com.rydex.presence.PresenceStore;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.DecimalMax;

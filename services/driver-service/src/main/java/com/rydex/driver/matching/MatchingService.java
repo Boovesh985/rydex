@@ -1,22 +1,22 @@
 package com.rydex.driver.matching;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.common.RedisKeys;
 import com.rydex.common.geo.GeoPoint;
 import com.rydex.driver.driver.Driver;
 import com.rydex.driver.driver.DriverRepository;
-import com.rydex.driver.driver.DriverStatus;
 import com.rydex.driver.matching.MatchOffer.Outcome;
 import com.rydex.driver.matching.MatchingDtos.AssignmentView;
 import com.rydex.driver.matching.MatchingDtos.JobView;
 import com.rydex.driver.matching.MatchingDtos.OfferView;
-import com.rydex.messaging.OutboxWriter;
-import com.rydex.driver.presence.PresenceStore;
 import com.rydex.driver.security.AuthUser;
 import com.rydex.driver.support.AfterCommit;
 import com.rydex.driver.web.ApiException;
 import com.rydex.events.EventEnvelope;
 import com.rydex.events.EventType;
 import com.rydex.events.RidePayload;
+import com.rydex.messaging.OutboxWriter;
+import com.rydex.presence.PresenceStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
@@ -62,6 +62,7 @@ public class MatchingService {
     private final DriverLocks locks;
     private final PresenceStore presence;
     private final OutboxWriter outbox;
+    private final OfferNotifier notifier;
     private final StringRedisTemplate redis;
     private final MatchingProperties props;
     private final TransactionTemplate tx;
@@ -69,8 +70,8 @@ public class MatchingService {
 
     public MatchingService(MatchJobRepository jobs, MatchOfferRepository offers, DriverRepository drivers,
                            CandidateFinder finder, CandidateRanker ranker, DriverLocks locks, PresenceStore presence,
-                           OutboxWriter outbox, StringRedisTemplate redis, MatchingProperties props,
-                           TransactionTemplate tx, Clock clock) {
+                           OutboxWriter outbox, OfferNotifier notifier, StringRedisTemplate redis,
+                           MatchingProperties props, TransactionTemplate tx, Clock clock) {
         this.jobs = jobs;
         this.offers = offers;
         this.drivers = drivers;
@@ -79,6 +80,7 @@ public class MatchingService {
         this.locks = locks;
         this.presence = presence;
         this.outbox = outbox;
+        this.notifier = notifier;
         this.redis = redis;
         this.props = props;
         this.tx = tx;
@@ -110,7 +112,10 @@ public class MatchingService {
         if (job != null && job.getStatus().isActive()) {
             for (MatchOffer offer : offers.findByRideIdAndOutcome(rideId, Outcome.PENDING)) {
                 offer.close(Outcome.CANCELLED, now);
-                AfterCommit.run(() -> locks.release(offer.getDriverId(), rideId));
+                AfterCommit.run(() -> {
+                    locks.release(offer.getDriverId(), rideId);
+                    notifier.closed(offer.getDriverId(), rideId, OfferNotifier.Closed.CANCELLED);
+                });
             }
             job.cancel(now);
             AfterCommit.run(() -> redis.delete(RedisKeys.rideOffer(rideId)));
@@ -209,7 +214,7 @@ public class MatchingService {
             pending.ifPresent(o -> o.close(Outcome.EXPIRED, now));
             UUID driverId = job.getCurrentDriverId();
             job.offerEnded(now.plus(props.lease()), now); // this caller searches next, keep the lease
-            AfterCommit.run(() -> endOfferSideEffects(rideId, driverId));
+            AfterCommit.run(() -> endOfferSideEffects(rideId, driverId, OfferNotifier.Closed.EXPIRED));
             log.info("Offer for ride {} to driver {} expired", rideId, driverId);
         }
         if (job.getAttempts() >= props.maxAttempts()) {
@@ -243,7 +248,7 @@ public class MatchingService {
         MatchOffer offer = offers.save(MatchOffer.pending(rideId, c.driverId(), job.getAttempts() + 1, c.etaS(),
                 c.distanceM(), now, expiresAt));
         job.offer(c.driverId(), now, expiresAt);
-        AfterCommit.run(() -> publishOffer(offer));
+        AfterCommit.run(() -> publishOffer(offer, job));
         log.info("Ride {} offered to driver {} (attempt {}, {} m away, ETA {} s{})", rideId, c.driverId(),
                 offer.getAttempt(), c.distanceM(), c.etaS(), c.etaEstimated() ? ", estimated" : "");
         return OfferAttempt.OFFERED;
@@ -306,7 +311,7 @@ public class MatchingService {
         jobs.flush();
         AfterCommit.run(() -> {
             presence.setStatus(driver.getId(), DriverStatus.ON_TRIP, driver.getVehicleType());
-            endOfferSideEffects(rideId, driver.getId());
+            endOfferSideEffects(rideId, driver.getId(), OfferNotifier.Closed.ACCEPTED);
         });
         log.info("Ride {} assigned to driver {}", rideId, driver.getId());
         return new AssignmentView(rideId, driver.getId(), job.getRiderId(), job.getPickup(), job.getDrop(),
@@ -334,7 +339,7 @@ public class MatchingService {
         jobs.findById(rideId)
                 .filter(j -> j.getStatus() == MatchJobStatus.OFFERED && driverId.equals(j.getCurrentDriverId()))
                 .ifPresent(j -> j.offerEnded(now, now)); // due now: the scheduler offers to the next driver
-        AfterCommit.run(() -> endOfferSideEffects(rideId, driverId));
+        AfterCommit.run(() -> endOfferSideEffects(rideId, driverId, OfferNotifier.Closed.REJECTED));
         log.info("Driver {} rejected ride {}", driverId, rideId);
     }
 
@@ -352,20 +357,25 @@ public class MatchingService {
 
     // ------------------------------------------------------------------ Redis side effects
 
-    /** {@code ride:{id}:offer}: the live offer, for the tracking service and the rider's "finding a driver" screen. */
-    private void publishOffer(MatchOffer offer) {
+    /**
+     * {@code ride:{id}:offer}: the live offer, for the rider's "finding a driver" screen; and the
+     * push to the driver's WebSocket.
+     */
+    private void publishOffer(MatchOffer offer, MatchJob job) {
         String key = RedisKeys.rideOffer(offer.getRideId());
         redis.opsForHash().putAll(key, Map.of(
                 "driverId", offer.getDriverId().toString(),
                 "attempt", Integer.toString(offer.getAttempt()),
                 "expiresAt", offer.getExpiresAt().toString()));
         redis.expire(key, props.offerTimeout());
+        notifier.offered(offer.getDriverId(), OfferView.of(offer, job, clock.instant()));
     }
 
-    private void endOfferSideEffects(UUID rideId, UUID driverId) {
+    private void endOfferSideEffects(UUID rideId, UUID driverId, OfferNotifier.Closed reason) {
         redis.delete(RedisKeys.rideOffer(rideId));
         if (driverId != null) {
             locks.release(driverId, rideId);
+            notifier.closed(driverId, rideId, reason);
         }
     }
 

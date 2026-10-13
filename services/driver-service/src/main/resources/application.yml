@@ -95,6 +95,8 @@ rydex:
     stale-after: 30s
     reap-interval: 5s
     min-location-interval: 500ms
+    # rebuilds driver:{id}:state for online drivers when Redis lost it (e.g. after a flush)
+    reconcile-interval: 30s
   matching:
     search-radii-km: [3, 5, 8]
     candidates-per-search: 10

@@ -2,12 +2,14 @@ package com.rydex.driver.presence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.common.RedisKeys;
 import com.rydex.common.RideType;
 import com.rydex.common.geo.Geohash;
 import com.rydex.driver.IntegrationTest;
-import com.rydex.driver.driver.DriverStatus;
-import com.rydex.driver.presence.PresenceStore.HeartbeatResult;
+import com.rydex.presence.DriverLocation;
+import com.rydex.presence.PresenceStore;
+import com.rydex.presence.PresenceStore.HeartbeatResult;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -21,6 +23,9 @@ class PresenceTests extends IntegrationTest {
 
     @Autowired
     PresenceReaper reaper;
+
+    @Autowired
+    PresenceReconciler reconciler;
 
     private boolean inGeo(RideType type, UUID id) {
         return redis.opsForZSet().score(RedisKeys.driversGeo(type), id.toString()) != null;
@@ -111,5 +116,26 @@ class PresenceTests extends IntegrationTest {
 
         assertThat(presence.evict(id, cutoff)).isFalse();
         assertThat(inGeo(RideType.ECONOMY, id)).isTrue();
+    }
+
+    @Test
+    void reconcilerRebuildsTheLostProjectionOfOnlineDriversOnly() {
+        TestDriver online = onlineDriver(RideType.COMFORT, CENTER);
+        TestDriver offline = newDriver(RideType.ECONOMY);
+        redis.execute(connection -> {
+            connection.serverCommands().flushAll(); // Redis lost everything
+            return null;
+        }, true);
+
+        assertThat(reconciler.reconcile()).isEqualTo(1);
+
+        assertThat(presence.state(online.id())).get()
+                .isEqualTo(new PresenceStore.State(DriverStatus.AVAILABLE, RideType.COMFORT));
+        assertThat(presence.state(offline.id())).isEmpty();
+        // a heartbeat from any source (e.g. tracking-service's WebSocket) now makes them searchable again
+        assertThat(presence.heartbeat(online.id(), CENTER.lat(), CENTER.lng(), null, null, Instant.now()))
+                .isEqualTo(HeartbeatResult.INDEXED);
+        assertThat(inGeo(RideType.COMFORT, online.id())).isTrue();
+        assertThat(reconciler.reconcile()).isZero();
     }
 }

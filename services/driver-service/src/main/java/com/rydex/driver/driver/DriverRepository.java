@@ -1,5 +1,8 @@
 package com.rydex.driver.driver;
 
+import com.rydex.common.DriverStatus;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,4 +14,6 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
     Optional<Driver> findByCurrentRideId(UUID rideId);
 
     boolean existsByVehicleNumberIgnoreCaseAndIdNot(String vehicleNumber, UUID id);
+
+    List<Driver> findByStatusIn(Collection<DriverStatus> statuses);
 }

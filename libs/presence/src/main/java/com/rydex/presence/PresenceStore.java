@@ -1,9 +1,9 @@
-package com.rydex.driver.presence;
+package com.rydex.presence;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.common.RedisKeys;
 import com.rydex.common.RideType;
 import com.rydex.common.geo.Geohash;
-import com.rydex.driver.driver.DriverStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -18,7 +18,6 @@ import java.util.stream.Stream;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.stereotype.Component;
 
 /**
  * Driver presence in Redis (master prompt §6): the availability projection
@@ -26,21 +25,29 @@ import org.springframework.stereotype.Component;
  * {@code driver:lastseen}, and the search indexes ({@code geo:drivers:{type}} and
  * {@code supply:{cell}}). Postgres stays the source of truth for status; every write that
  * touches several keys runs as one Lua script.
+ *
+ * <p>Shared by driver-service (status changes, REST heartbeats, the reaper) and tracking-service
+ * (WebSocket heartbeats), so both write the keys the same way.
  */
-@Component
 public class PresenceStore {
 
     private static final List<String> ALL_GEO_KEYS = Arrays.stream(RideType.values()).map(RedisKeys::driversGeo).toList();
 
     private final StringRedisTemplate redis;
-    private final PresenceProperties props;
-    private final DefaultRedisScript<Long> locationScript = script("redis/location.lua");
-    private final DefaultRedisScript<Long> availabilityScript = script("redis/availability.lua");
-    private final DefaultRedisScript<Long> evictScript = script("redis/evict.lua");
+    private final Duration staleAfter;
+    private final Duration minLocationInterval;
+    private final DefaultRedisScript<Long> locationScript = script("rydex/presence/location.lua");
+    private final DefaultRedisScript<Long> availabilityScript = script("rydex/presence/availability.lua");
+    private final DefaultRedisScript<Long> evictScript = script("rydex/presence/evict.lua");
 
-    public PresenceStore(StringRedisTemplate redis, PresenceProperties props) {
+    /**
+     * @param staleAfter          a location expires (and the reaper evicts the driver) after this much silence
+     * @param minLocationInterval location updates closer together than this are refused
+     */
+    public PresenceStore(StringRedisTemplate redis, Duration staleAfter, Duration minLocationInterval) {
         this.redis = redis;
-        this.props = props;
+        this.staleAfter = staleAfter;
+        this.minLocationInterval = minLocationInterval;
     }
 
     public enum HeartbeatResult {
@@ -59,7 +66,7 @@ public class PresenceStore {
                 driverId.toString(), Double.toString(lat), Double.toString(lng),
                 heading == null ? "" : heading.toString(), speed == null ? "" : speed.toString(),
                 Geohash.encode(lat, lng, Geohash.MATCHING_PRECISION), Long.toString(at.toEpochMilli()),
-                Long.toString(props.staleAfter().toMillis()),
+                Long.toString(staleAfter.toMillis()),
                 RedisKeys.DRIVERS_GEO_PREFIX, RedisKeys.SUPPLY_PREFIX);
         if (result == null || result < 0) {
             return HeartbeatResult.STATE_MISSING;
@@ -132,8 +139,7 @@ public class PresenceStore {
      * {@code minLocationInterval} are refused, which caps each driver at a few writes per second.
      */
     public boolean tryClaimLocationSlot(UUID driverId) {
-        Duration interval = props.minLocationInterval();
-        Boolean ok = redis.opsForValue().setIfAbsent(RedisKeys.driverLocationThrottle(driverId), "1", interval);
+        Boolean ok = redis.opsForValue().setIfAbsent(RedisKeys.driverLocationThrottle(driverId), "1", minLocationInterval);
         return Boolean.TRUE.equals(ok);
     }
 

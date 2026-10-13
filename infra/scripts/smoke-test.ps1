@@ -5,14 +5,17 @@
 #   Phase 2  driver-service: driver profile, go online, grid, candidate ranking, roles
 #   Phase 3  a full ride across services over Kafka: book -> offer -> accept -> assigned ->
 #            arrived -> start (OTP) -> complete -> driver free again; and a cancelled offer
+#   Phase 4  the same ride live over WebSockets (STOMP): offer pushed to the driver, accepted over
+#            the socket, notifications to the rider, the driver's position streamed with an ETA
 #
-# Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081)
-# and driver-service (:8082) running (see README). Usage, from the repo root:
+# Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081),
+# driver-service (:8082) and tracking-service (:8083) running (see README). Usage, from the repo root:
 #   powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
 
 param(
     [string]$RideUrl = "http://localhost:8081",
-    [string]$DriverUrl = "http://localhost:8082"
+    [string]$DriverUrl = "http://localhost:8082",
+    [string]$TrackingUrl = "http://localhost:8083"
 )
 
 $ErrorActionPreference = "Continue"
@@ -77,6 +80,104 @@ function Login([string]$email) {
     $r = Api POST "$RideUrl/api/auth/login" $null @{ email = $email; password = "Rydex@123" }
     if ($r.Status -ne 200) { throw "login failed for $email (HTTP $($r.Status))" }
     return $r.Body.accessToken
+}
+
+# ---- a minimal STOMP 1.2 client over .NET's ClientWebSocket (no modules needed)
+# A connection is a hashtable: the socket, one pending receive (cancelling a receive would abort
+# the socket on Windows PowerShell, so it is kept for the next call), and frames not yet consumed.
+function StompConnect([string]$url, [string]$token) {
+    $ws = New-Object System.Net.WebSockets.ClientWebSocket
+    $conn = @{ Ws = $ws; Pending = $null; RecvBuf = $null; Buffer = ""; Frames = (New-Object System.Collections.ArrayList); Connected = $false }
+    # [void]: these tasks are Task<VoidTaskResult> at run time, and PowerShell would return their results
+    try { [void]$ws.ConnectAsync([Uri]$url, [Threading.CancellationToken]::None).GetAwaiter().GetResult() } catch { return $conn }
+    $headers = [ordered]@{ "accept-version" = "1.2"; "host" = "localhost"; "heart-beat" = "0,0" }
+    if ($token) { $headers["Authorization"] = "Bearer $token" }
+    StompSend $conn "CONNECT" $headers
+    $frame = StompNext $conn 5000 { param($f) $true }
+    $conn.Connected = ($null -ne $frame -and $frame.Command -eq "CONNECTED")
+    return $conn
+}
+
+function StompSend($conn, [string]$command, $headers, [string]$body = "") {
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append("$command`n")
+    foreach ($k in $headers.Keys) { [void]$sb.Append("${k}:$($headers[$k])`n") }
+    [void]$sb.Append("`n").Append($body).Append([char]0)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($sb.ToString())
+    try {
+        [void]$conn.Ws.SendAsync([System.ArraySegment[byte]]::new($bytes), [System.Net.WebSockets.WebSocketMessageType]::Text, $true,
+            [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    } catch { }
+}
+
+function StompSubscribe($conn, [string]$destination) {
+    $id = "sub-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+    StompSend $conn "SUBSCRIBE" ([ordered]@{ "id" = $id; "destination" = $destination })
+    Start-Sleep -Milliseconds 300 # the broker registers subscriptions asynchronously
+    return $id
+}
+
+function StompSendJson($conn, [string]$destination, $payload) {
+    StompSend $conn "SEND" ([ordered]@{ "destination" = $destination; "content-type" = "application/json" }) ($payload | ConvertTo-Json -Compress)
+}
+
+function ParseFrame([string]$raw) {
+    $split = $raw.IndexOf("`n`n")
+    $head = if ($split -ge 0) { $raw.Substring(0, $split) } else { $raw }
+    $body = if ($split -ge 0) { $raw.Substring($split + 2) } else { "" }
+    $lines = $head -split "`n"
+    $headers = @{}
+    for ($i = 1; $i -lt $lines.Count; $i++) {
+        $idx = $lines[$i].IndexOf(":")
+        if ($idx -gt 0) {
+            $key = $lines[$i].Substring(0, $idx)
+            if (-not $headers.ContainsKey($key)) { $headers[$key] = $lines[$i].Substring($idx + 1).TrimEnd("`r") }
+        }
+    }
+    $json = $null
+    if ($body) { try { $json = $body | ConvertFrom-Json } catch { } }
+    return @{ Command = $lines[0].Trim(); Headers = $headers; Json = $json }
+}
+
+# The next frame for which $predicate returns $true, within $timeoutMs; $null on timeout or close.
+# (Script blocks see their caller's variables, so this function must not use the names the
+# blocks passed to it rely on, such as $match and $subId in StompMessage.)
+function StompNext($conn, [int]$timeoutMs, [scriptblock]$predicate) {
+    $deadline = (Get-Date).AddMilliseconds($timeoutMs)
+    while ($true) {
+        for ($i = 0; $i -lt $conn.Frames.Count; $i++) {
+            $f = $conn.Frames[$i]
+            if (& $predicate $f) { $conn.Frames.RemoveAt($i); return $f }
+        }
+        $left = [int]($deadline - (Get-Date)).TotalMilliseconds
+        if ($left -le 0) { return $null }
+        if ($null -eq $conn.Pending) {
+            if ($conn.Ws.State -ne [System.Net.WebSockets.WebSocketState]::Open) { return $null }
+            $conn.RecvBuf = New-Object byte[] 65536
+            $conn.Pending = $conn.Ws.ReceiveAsync([System.ArraySegment[byte]]::new($conn.RecvBuf), [Threading.CancellationToken]::None)
+        }
+        try { $done = $conn.Pending.Wait([Math]::Min($left, 500)) } catch { $conn.Pending = $null; return $null }
+        if (-not $done) { continue }
+        $result = $conn.Pending.Result
+        $conn.Pending = $null
+        if ($result.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) { continue }
+        $conn.Buffer += [System.Text.Encoding]::UTF8.GetString($conn.RecvBuf, 0, $result.Count)
+        while (($nul = $conn.Buffer.IndexOf([char]0)) -ge 0) {
+            $raw = $conn.Buffer.Substring(0, $nul).TrimStart("`r", "`n")
+            $conn.Buffer = $conn.Buffer.Substring($nul + 1)
+            if ($raw) { [void]$conn.Frames.Add((ParseFrame $raw)) }
+        }
+    }
+}
+
+# The next MESSAGE on subscription $subId whose JSON body satisfies $match.
+function StompMessage($conn, [string]$subId, [int]$timeoutMs, [scriptblock]$match = { param($j) $true }) {
+    return StompNext $conn $timeoutMs { param($f) $f.Command -eq "MESSAGE" -and $f.Headers["subscription"] -eq $subId -and (& $match $f.Json) }
+}
+
+function StompClose($conn) {
+    try { $conn.Ws.CloseAsync([System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "", [Threading.CancellationToken]::None).Wait(2000) | Out-Null } catch { }
+    $conn.Ws.Dispose()
 }
 
 $center = @{ lat = 13.0827; lng = 80.2707; address = "Chennai Central" }
@@ -246,6 +347,86 @@ $release = "$DriverUrl/api/admin/drivers/$driverId/release"
 Check "only admins can release a driver" ((Api POST $release $driverToken).Status -eq 403)
 Check "releasing a driver who is not on a trip is refused (409)" ((Api POST $release $admin).Status -eq 409)
 
+Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
+
+# ---------------------------------------------------------------- Phase 4
+Section "Phase 4 - live tracking over WebSocket ($TrackingUrl)"
+$thealth = Api GET "$TrackingUrl/actuator/health"
+Check "tracking-service is UP" ($thealth.Status -eq 200 -and $thealth.Body.status -eq "UP")
+if ($thealth.Status -ne 200) {
+    Write-Host "tracking-service is not running; start it first (README step 6)." -ForegroundColor Yellow
+    exit 1
+}
+$wsUrl = ($TrackingUrl -replace "^http", "ws") + "/ws"
+
+$anon = StompConnect $wsUrl $null
+Check "a WebSocket without a token is refused" (-not $anon.Connected)
+StompClose $anon
+
+$dws = StompConnect $wsUrl $driverToken
+$rws = StompConnect $wsUrl $rider
+Check "driver01 and rider1 connect with their access tokens" ($dws.Connected -and $rws.Connected)
+$offersSub = StompSubscribe $dws "/user/queue/offers"
+$driverNotes = StompSubscribe $dws "/user/queue/notifications"
+$riderNotes = StompSubscribe $rws "/user/queue/notifications"
+
+$online = Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "AVAILABLE"; lat = 13.0831; lng = 80.2707 }
+Check "driver01 is online next to the pickup" ($online.Body.searchable -eq $true)
+
+$book3 = Api POST "$RideUrl/api/rides" $rider @{ pickup = $center; drop = $airport; rideType = "ECONOMY" } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
+$ride3 = $book3.Body.id
+$otp3 = $book3.Body.otp
+$watch.Restart()
+$pushed = StompMessage $dws $offersSub 30000 { param($j) $j.type -eq "OFFER" -and $j.rideId -eq $ride3 }
+Check "the offer is pushed to driver01's socket" ($null -ne $pushed) ("after {0:N1} s, {1} s to answer, pickup ETA {2} s" -f $watch.Elapsed.TotalSeconds, $pushed.Json.offer.secondsLeft, $pushed.Json.offer.pickupEtaS)
+$requested = StompMessage $rws $riderNotes 15000 { param($j) $j.type -eq "RIDE_REQUESTED" -and $j.rideId -eq $ride3 }
+Check "rider1 is notified: finding a driver" ($null -ne $requested) "$($requested.Json.title)"
+
+StompSendJson $dws "/app/offer.respond" @{ rideId = $ride3; accept = $true }
+$answer = StompMessage $dws $offersSub 15000 { param($j) $j.type -eq "OFFER_RESPONSE" -and $j.rideId -eq $ride3 }
+Check "driver01 accepts over the socket" ($answer.Json.ok -eq $true) "HTTP $($answer.Json.status) from driver-service"
+$watch.Restart()
+$assignedNote = StompMessage $rws $riderNotes 15000 { param($j) $j.type -eq "DRIVER_ASSIGNED" -and $j.rideId -eq $ride3 }
+Check "rider1 is notified: driver on the way" ($assignedNote.Json.driverId -eq $profile.Body.id) ("after {0:N1} s: {1}" -f $watch.Elapsed.TotalSeconds, $assignedNote.Json.title)
+$driverAssigned = StompMessage $dws $driverNotes 15000 { param($j) $j.type -eq "DRIVER_ASSIGNED" -and $j.rideId -eq $ride3 }
+Check "driver01 is notified: ride assigned" ($null -ne $driverAssigned)
+
+$liveSub = StompSubscribe $rws "/topic/rides/$ride3/location"
+$rider2 = Login "rider2@rydex.dev"
+$snoop = StompConnect $wsUrl $rider2
+[void](StompSubscribe $snoop "/topic/rides/$ride3/location")
+$refused = StompNext $snoop 5000 { param($f) $f.Command -eq "ERROR" }
+Check "another rider cannot watch this ride" ($null -ne $refused) "$($refused.Headers['message'])"
+StompClose $snoop
+
+StompSendJson $dws "/app/driver.location" @{ lat = 13.0850; lng = 80.2712; heading = 180; speed = 7.5 }
+$watch.Restart()
+$live = StompMessage $rws $liveSub 10000 { param($j) $j.rideId -eq $ride3 }
+Check "rider1 sees driver01 move, with an ETA" ($live.Json.phase -eq "TO_PICKUP" -and $live.Json.etaS -ge 0) `
+    ("after {0:N0} ms: {1} m away, ETA {2} s{3}" -f $watch.Elapsed.TotalMilliseconds, $live.Json.distanceM, $live.Json.etaS, $(if ($live.Json.etaEstimated) { " (estimated)" } else { " (OSRM)" }))
+$restLoc = Api GET "$TrackingUrl/api/tracking/rides/$ride3/location" $rider
+Check "the same position over REST (for screens opened mid-ride)" ($restLoc.Status -eq 200 -and $restLoc.Body.lat -eq 13.085)
+
+Api POST "$RideUrl/api/rides/$ride3/arrived" $driverToken | Out-Null
+$arrivedNote = StompMessage $rws $riderNotes 15000 { param($j) $j.type -eq "DRIVER_ARRIVED" -and $j.rideId -eq $ride3 }
+Check "rider1 is notified: driver has arrived" ($null -ne $arrivedNote) "$($arrivedNote.Json.message)"
+Api POST "$RideUrl/api/rides/$ride3/start" $driverToken @{ otp = $otp3 } | Out-Null
+$started = StompMessage $rws $riderNotes 15000 { param($j) $j.type -eq "RIDE_STARTED" -and $j.rideId -eq $ride3 }
+StompSendJson $dws "/app/driver.location" @{ lat = 13.0700; lng = 80.2400; heading = 220; speed = 11 }
+$watch.Restart()
+$toDrop = StompMessage $rws $liveSub 10000 { param($j) $j.phase -eq "TO_DROP" }
+Check "during the trip the ETA is to the drop" ($null -ne $started -and $null -ne $toDrop) `
+    ("after {0:N0} ms: {1} m to go, ETA {2} s" -f $watch.Elapsed.TotalMilliseconds, $toDrop.Json.distanceM, $toDrop.Json.etaS)
+Api POST "$RideUrl/api/rides/$ride3/complete" $driverToken | Out-Null
+$doneNote = StompMessage $rws $riderNotes 15000 { param($j) $j.type -eq "RIDE_COMPLETED" -and $j.rideId -eq $ride3 }
+Check "rider1 is notified: trip completed" ($null -ne $doneNote) "$($doneNote.Json.message)"
+$hasPath = WaitFor 15 { @((Api GET "$TrackingUrl/api/tracking/rides/$ride3/path" $rider).Body).Count -ge 1 }
+Check "the trip's path was recorded (driver.location -> history)" $hasPath
+Check "tracking-service Swagger UI is up" ((Api GET "$TrackingUrl/v3/api-docs").Status -eq 200)
+
+StompClose $dws
+StompClose $rws
+[void](WaitFor 15 { (Api GET "$DriverUrl/api/drivers/me" $driverToken).Body.status -eq "AVAILABLE" })
 Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
 
 # ---------------------------------------------------------------- summary

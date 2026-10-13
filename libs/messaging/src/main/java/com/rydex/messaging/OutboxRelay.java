@@ -112,7 +112,8 @@ public class OutboxRelay implements SmartLifecycle {
     /** Deletes published rows and processed-event markers older than the retention period. */
     public void cleanUp() {
         Timestamp cutoff = Timestamp.from(clock.instant().minus(props.retention()));
-        int outbox = jdbc.sql("DELETE FROM outbox WHERE published_at < :cutoff").param("cutoff", cutoff).update();
+        int outbox = !props.enabled() ? 0
+                : jdbc.sql("DELETE FROM outbox WHERE published_at < :cutoff").param("cutoff", cutoff).update();
         int markers = jdbc.sql("DELETE FROM processed_events WHERE processed_at < :cutoff").param("cutoff", cutoff).update();
         if (outbox + markers > 0) {
             log.info("Messaging cleanup removed {} outbox row(s) and {} processed-event marker(s)", outbox, markers);
@@ -126,8 +127,10 @@ public class OutboxRelay implements SmartLifecycle {
             t.setDaemon(true);
             return t;
         });
-        long poll = props.pollInterval().toMillis();
-        executor.scheduleWithFixedDelay(() -> safely("relay", this::drain), poll, poll, TimeUnit.MILLISECONDS);
+        if (props.enabled()) {
+            long poll = props.pollInterval().toMillis();
+            executor.scheduleWithFixedDelay(() -> safely("relay", this::drain), poll, poll, TimeUnit.MILLISECONDS);
+        }
         long cleanup = props.cleanupInterval().toMillis();
         executor.scheduleWithFixedDelay(() -> safely("cleanup", this::cleanUp), cleanup, cleanup, TimeUnit.MILLISECONDS);
         running = true;

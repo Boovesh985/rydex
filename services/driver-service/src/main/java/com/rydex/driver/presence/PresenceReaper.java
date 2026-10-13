@@ -1,5 +1,6 @@
 package com.rydex.driver.presence;
 
+import com.rydex.presence.PresenceStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;

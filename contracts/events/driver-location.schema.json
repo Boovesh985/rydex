@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rydex.dev/contracts/events/driver-location.schema.json",
+  "title": "DriverLocationEvent",
+  "description": "One driver position on the driver.location topic (key: driverId), published by tracking-service for every accepted location update. Telemetry: sent directly (no outbox), at most once. Mirrors com.rydex.events.DriverLocationEvent. Consumers must ignore unknown fields.",
+  "type": "object",
+  "required": ["eventId", "driverId", "lat", "lng", "recordedAt"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "driverId": { "type": "string", "format": "uuid" },
+    "rideId": {
+      "type": ["string", "null"], "format": "uuid",
+      "description": "The ride the driver is on (assigned, arrived or in progress), else null."
+    },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+    "heading": { "type": ["number", "null"], "minimum": 0, "maximum": 360, "description": "Degrees clockwise from north." },
+    "speed": { "type": ["number", "null"], "minimum": 0, "description": "Metres per second." },
+    "geohash": { "type": ["string", "null"], "description": "Precision-6 geohash of the position." },
+    "status": { "enum": ["OFFLINE", "AVAILABLE", "ON_TRIP", null] },
+    "recordedAt": { "type": "string", "format": "date-time", "description": "Server time the update was accepted (UTC)." }
+  },
+  "additionalProperties": true
+}

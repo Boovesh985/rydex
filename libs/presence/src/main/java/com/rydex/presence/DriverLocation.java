@@ -1,4 +1,4 @@
-package com.rydex.driver.presence;
+package com.rydex.presence;
 
 import java.time.Instant;
 import java.util.UUID;

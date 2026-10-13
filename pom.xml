@@ -21,6 +21,7 @@
     <modules>
         <module>libs/common-events</module>
         <module>libs/messaging</module>
+        <module>libs/presence</module>
         <module>services/ride-service</module>
         <module>services/driver-service</module>
         <module>services/tracking-service</module>
@@ -50,6 +51,11 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
+                <groupId>com.rydex</groupId>
+                <artifactId>presence</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>io.github.resilience4j</groupId>
                 <artifactId>resilience4j-spring-boot4</artifactId>
                 <version>${resilience4j.version}</version>
@@ -71,7 +77,10 @@
                     <configuration>
                         <!-- NIO pipes on Windows use Unix-domain sockets in %TEMP%; a user profile path with
                              spaces/8.3 names makes Tomcat fail with "Unable to establish loopback connection". -->
-                        <argLine>@{argLine} -Djdk.net.unixdomain.tmpdir=${project.build.directory}</argLine>
+                        <!-- Mockito's inline mock maker is loaded as an agent up front (resolved by the
+                             dependency plugin's "properties" goal) instead of self-attaching at run time,
+                             which JDK 21 warns about and which fails intermittently on Windows. -->
+                        <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar} -Djdk.net.unixdomain.tmpdir=${project.build.directory}</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -85,6 +94,18 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <!-- exposes ${group:artifact:jar} paths of dependencies, for the Mockito agent above -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>

@@ -19,6 +19,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rydex_local_pw}
       RIDE_DB_PASSWORD: ${RIDE_DB_PASSWORD:-ride_local_pw}
       DRIVER_DB_PASSWORD: ${DRIVER_DB_PASSWORD:-driver_local_pw}
+      TRACKING_DB_PASSWORD: ${TRACKING_DB_PASSWORD:-tracking_local_pw}
       PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_local_pw}
       AI_DB_PASSWORD: ${AI_DB_PASSWORD:-ai_local_pw}
     ports:

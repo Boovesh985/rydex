@@ -29,6 +29,7 @@ class MessagingConfiguration {
     private static final long DAY_MS = 86_400_000L;
 
     @Bean
+    @ConditionalOnProperty(name = "rydex.messaging.outbox.enabled", havingValue = "true", matchIfMissing = true)
     OutboxWriter outboxWriter(JdbcClient jdbc, JsonMapper json) {
         return new OutboxWriter(jdbc, json);
     }

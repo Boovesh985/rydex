@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 
 import com.rydex.common.RedisKeys;
+import com.rydex.common.ws.WsPush;
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
 import com.rydex.driver.IntegrationTest;
@@ -21,14 +22,22 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.web.client.ResourceAccessException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 class MatchingFlowTests extends IntegrationTest {
 
     @Autowired
     DriverLocks locks;
+
+    @Autowired
+    JsonMapper json;
 
     private String jobStatus(UUID rideId) {
         return jdbc.sql("SELECT status FROM match_jobs WHERE ride_id = :id").param("id", rideId).query(String.class).single();
@@ -383,5 +392,46 @@ class MatchingFlowTests extends IntegrationTest {
     private Instant deadline(UUID rideId) {
         return jdbc.sql("SELECT search_deadline FROM match_jobs WHERE ride_id = :id").param("id", rideId)
                 .query(Timestamp.class).single().toInstant();
+    }
+
+    @Test
+    void offersAndTheirEndArePushedToTheDriversWebSocketChannel() throws Exception {
+        List<JsonNode> pushes = new CopyOnWriteArrayList<>();
+        var listener = new RedisMessageListenerContainer();
+        listener.setConnectionFactory(redis.getConnectionFactory());
+        listener.addMessageListener((message, pattern) -> pushes.add(json.readTree(message.getBody())),
+                new ChannelTopic(WsPush.CHANNEL));
+        listener.afterPropertiesSet();
+        listener.start();
+        try {
+            TestDriver first = onlineDriver(RideType.ECONOMY, north(CENTER, 300));
+            TestDriver second = onlineDriver(RideType.ECONOMY, north(CENTER, 900));
+            Thread.sleep(300); // let the subscription settle
+            UUID rideId = requestRide(RideType.ECONOMY, CENTER);
+            awaitOfferTo(first, rideId);
+            api().post("/api/drivers/me/offers/" + rideId + "/reject", first.token(), null);
+            awaitOfferTo(second, rideId);
+            api().post("/api/drivers/me/offers/" + rideId + "/accept", second.token(), null);
+
+            await().atMost(WAIT).untilAsserted(() -> assertThat(pushes).hasSize(4));
+            assertThat(pushes).allSatisfy(p -> {
+                assertThat(p.path("destination").asString()).isEqualTo("/queue/offers");
+                assertThat(p.path("payload").path("rideId").asString()).isEqualTo(rideId.toString());
+            });
+            assertThat(pushes).extracting(p -> p.path("user").asString() + " " + p.path("payload").path("type").asString()
+                            + " " + (p.path("payload").path("reason").isString() ? p.path("payload").path("reason").asString() : ""))
+                    .containsExactly(
+                            first.id() + " OFFER ",
+                            first.id() + " OFFER_CLOSED REJECTED",
+                            second.id() + " OFFER ",
+                            second.id() + " OFFER_CLOSED ACCEPTED");
+            JsonNode offer = pushes.get(0).path("payload").path("offer");
+            assertThat(offer.path("rideType").asString()).isEqualTo("ECONOMY");
+            assertThat(offer.path("expiresAt").asString()).isNotBlank();
+            assertThat(offer.path("pickup").path("lat").asDouble()).isEqualTo(CENTER.lat());
+        } finally {
+            listener.stop();
+            listener.destroy();
+        }
     }
 }

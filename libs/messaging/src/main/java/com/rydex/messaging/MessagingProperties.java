@@ -14,6 +14,8 @@ public record MessagingProperties(
         @DefaultValue("false") boolean createTopics) {
 
     /**
+     * @param enabled         false for a service that only consumes events: no outbox table, no
+     *                        {@link OutboxWriter}, no relaying (processed-event cleanup still runs)
      * @param pollInterval    how often unpublished outbox rows are relayed
      * @param batchSize       rows per relay pass
      * @param sendTimeout     how long to wait for the broker to acknowledge one record
@@ -21,6 +23,7 @@ public record MessagingProperties(
      * @param cleanupInterval how often that cleanup runs
      */
     public record Outbox(
+            @DefaultValue("true") boolean enabled,
             @DefaultValue("500ms") Duration pollInterval,
             @DefaultValue("100") int batchSize,
             @DefaultValue("10s") Duration sendTimeout,

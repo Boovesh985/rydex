@@ -24,6 +24,10 @@
             <groupId>com.rydex</groupId>
             <artifactId>messaging</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.rydex</groupId>
+            <artifactId>presence</artifactId>
+        </dependency>
 
         <!-- Web + API docs -->
         <dependency>

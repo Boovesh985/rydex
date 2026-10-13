@@ -1,5 +1,6 @@
 package com.rydex.driver.driver;
 
+import com.rydex.common.DriverStatus;
 import com.rydex.common.RideType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
