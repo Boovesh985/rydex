@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import type { ProxyOptions } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -23,13 +24,30 @@ export const routes: [string, string][] = [
   ['/api', ride], // auth, me, places, rides
 ];
 
+const names: Record<string, string> = { [ride]: 'ride-service', [driver]: 'driver-service', [tracking]: 'tracking-service', [payment]: 'payment-service' };
+
+/** A service that is not running answers 502 with a Problem Details body that names it, not a bare 500. */
+function proxyTo(target: string): ProxyOptions {
+  return {
+    target,
+    configure: (proxy) => {
+      proxy.on('error', (_err, _req, res) => {
+        if (!('writeHead' in res) || res.headersSent) return;
+        const detail = `${names[target]} is not running (nothing answers on ${target}). Start it, then try again.`;
+        res.writeHead(502, { 'Content-Type': 'application/problem+json' });
+        res.end(JSON.stringify({ title: 'Bad Gateway', status: 502, detail }));
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     strictPort: true,
     proxy: {
-      ...Object.fromEntries(routes.map(([prefix, target]) => [prefix, { target }])),
+      ...Object.fromEntries(routes.map(([prefix, target]) => [prefix, proxyTo(target)])),
       '/ws': { target: tracking, ws: true },
     },
   },

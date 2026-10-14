@@ -113,11 +113,15 @@ async def _supervise(driver: SimDriver, stats: Stats) -> None:
             await driver.run()
         except asyncio.CancelledError:
             raise
+        except httpx.TransportError as e:
+            stats.errors += 1
+            log.warning("%s cannot reach the backend (%s): are the services running? Retrying in %.0f s",
+                        driver.label, type(e).__name__, backoff)
         except Exception as e:
             stats.errors += 1
             log.warning("%s stopped (%s), restarting in %.0f s", driver.label, e, backoff)
-            await asyncio.sleep(backoff)
-            backoff = min(60.0, backoff * 2)
+        await asyncio.sleep(backoff)
+        backoff = min(60.0, backoff * 2)
 
 
 async def _report(stats: Stats) -> None:

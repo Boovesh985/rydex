@@ -71,6 +71,8 @@ describe('api client', () => {
     expect(errorMessage(e)).toBe('Too many requests. Try again in 42 s.');
     expect(errorMessage(new ApiError(409, 'Conflict', 'Ride already started'))).toBe('Ride already started');
     expect(errorMessage(new ApiError(500, 'Internal Server Error', 'NPE'))).toBe('Something went wrong on our side. Try again.');
+    expect(errorMessage(new ApiError(502, 'Bad Gateway', 'ride-service is not running'))).toBe('ride-service is not running');
+    expect(errorMessage(new ApiError(504, '', ''))).toBe('Rydex is not reachable right now. Try again in a moment.');
   });
 
   it('returns nothing for 204', async () => {
