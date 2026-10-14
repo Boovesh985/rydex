@@ -34,6 +34,24 @@ class PlacesApiTests extends IntegrationTest {
     }
 
     @Test
+    void routeBetweenTwoPointsForAnySignedInUser() {
+        String driver = token(api().register("DRIVER"));
+        given(osrm.route(any(), any())).willReturn(List.of(new RouteResult.Alternative(4_321, 654, "abc_poly")));
+
+        var res = api().get("/api/places/route?fromLat=13.0101&fromLng=80.2101&toLat=13.0202&toLng=80.2202", driver);
+
+        assertThat(res.getStatusCode().value()).isEqualTo(200);
+        assertThat(res.getBody().path("distanceM").asInt()).isEqualTo(4_321);
+        assertThat(res.getBody().path("durationS").asInt()).isEqualTo(654);
+        assertThat(res.getBody().path("polyline").asString()).isEqualTo("abc_poly");
+        assertThat(res.getBody().path("source").asString()).isEqualTo("OSRM");
+        assertThat(api().get("/api/places/route?fromLat=99&fromLng=80&toLat=13&toLng=80", driver)
+                .getStatusCode().value()).isEqualTo(400);
+        assertThat(api().get("/api/places/route?fromLat=13&fromLng=80&toLat=13&toLng=80.1", null)
+                .getStatusCode().value()).isEqualTo(401);
+    }
+
+    @Test
     void reverseGeocodes() {
         String rider = token(api().register("RIDER"));
         given(nominatim.reverse(anyDouble(), anyDouble()))

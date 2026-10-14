@@ -67,4 +67,14 @@ public final class DriverDtos {
 
     public record Position(double lat, double lng, Instant at) {
     }
+
+    /** What a rider sees about their driver: no position, no status. */
+    public record DriverCard(UUID id, String name, RideType vehicleType, String vehicleNumber, String vehicleModel,
+                             BigDecimal rating) {
+
+        static DriverCard of(Driver d) {
+            return new DriverCard(d.getId(), d.getName(), d.getVehicleType(), d.getVehicleNumber(),
+                    d.getVehicleModel(), d.getRating());
+        }
+    }
 }

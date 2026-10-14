@@ -355,6 +355,16 @@ public class MatchingService {
         return jobs.findById(rideId).map(j -> JobView.of(j, offers.findByRideIdOrderByAttempt(rideId)));
     }
 
+    /** The driver a ride was assigned to, if the caller may see it: the ride's rider, that driver or an admin. */
+    @Transactional(readOnly = true)
+    public Optional<UUID> assignedDriver(AuthUser caller, UUID rideId) {
+        return jobs.findById(rideId)
+                .filter(j -> j.getAssignedDriverId() != null)
+                .filter(j -> caller.isAdmin() || caller.id().equals(j.getRiderId())
+                        || caller.id().equals(j.getAssignedDriverId()))
+                .map(MatchJob::getAssignedDriverId);
+    }
+
     // ------------------------------------------------------------------ Redis side effects
 
     /**

@@ -1,5 +1,6 @@
 package com.rydex.ride.geo;
 
+import com.rydex.common.geo.GeoPoint;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.DecimalMax;
@@ -17,9 +18,15 @@ import org.springframework.web.bind.annotation.RestController;
 class PlacesController {
 
     private final PlacesService places;
+    private final RoutingService routing;
 
-    PlacesController(PlacesService places) {
+    PlacesController(PlacesService places, RoutingService routing) {
         this.places = places;
+        this.routing = routing;
+    }
+
+    /** {@code polyline} is OSRM polyline6, null when {@code source} is ESTIMATED (straight line). */
+    public record RouteView(int distanceM, int durationS, String polyline, RouteResult.Source source) {
     }
 
     @GetMapping("/search")
@@ -37,5 +44,16 @@ class PlacesController {
             @RequestParam @DecimalMin("-90") @DecimalMax("90") double lat,
             @RequestParam @DecimalMin("-180") @DecimalMax("180") double lng) {
         return places.reverse(lat, lng);
+    }
+
+    @GetMapping("/route")
+    @Operation(summary = "Driving route between two points (OSRM, cached): the live-ride and driver navigation maps")
+    RouteView route(
+            @RequestParam @DecimalMin("-90") @DecimalMax("90") double fromLat,
+            @RequestParam @DecimalMin("-180") @DecimalMax("180") double fromLng,
+            @RequestParam @DecimalMin("-90") @DecimalMax("90") double toLat,
+            @RequestParam @DecimalMin("-180") @DecimalMax("180") double toLng) {
+        RouteResult r = routing.route(GeoPoint.of(fromLat, fromLng), GeoPoint.of(toLat, toLng));
+        return new RouteView(r.distanceM(), r.durationS(), r.polyline(), r.source());
     }
 }

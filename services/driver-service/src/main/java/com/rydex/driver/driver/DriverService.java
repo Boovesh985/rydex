@@ -2,6 +2,7 @@ package com.rydex.driver.driver;
 
 import com.rydex.common.DriverStatus;
 import com.rydex.driver.driver.DriverDtos.Availability;
+import com.rydex.driver.driver.DriverDtos.DriverCard;
 import com.rydex.driver.driver.DriverDtos.DriverView;
 import com.rydex.driver.driver.DriverDtos.LocationRequest;
 import com.rydex.driver.driver.DriverDtos.StatusRequest;
@@ -43,6 +44,15 @@ public class DriverService {
     @Transactional(readOnly = true)
     public DriverView me(AuthUser user) {
         return view(load(user));
+    }
+
+    /** The driver of a ride, for its rider (and that driver, and admins); 404 for anyone else or before assignment. */
+    @Transactional(readOnly = true)
+    public DriverCard cardForRide(AuthUser caller, UUID rideId) {
+        return matching.assignedDriver(caller, rideId)
+                .flatMap(drivers::findById)
+                .map(DriverCard::of)
+                .orElseThrow(() -> ApiException.notFound("Assigned driver"));
     }
 
     /** Creates the profile on first call (onboarding), updates the vehicle afterwards. */

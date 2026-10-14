@@ -20,4 +20,8 @@ public record AuthUser(UUID id, String role, String name) {
     public boolean isDriver() {
         return DRIVER.equals(role);
     }
+
+    public boolean isAdmin() {
+        return ADMIN.equals(role);
+    }
 }
