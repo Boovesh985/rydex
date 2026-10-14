@@ -1,0 +1,176 @@
+import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { driversApi, paymentsApi, placesApi, ridesApi, trackingApi } from '../../api/endpoints';
+import { ApiError } from '../../api/http';
+import type { LiveLocation, Payment } from '../../api/types';
+import { renderWithProviders, ride } from '../../test/fixtures';
+import { LiveRide } from './LiveRide';
+
+vi.mock('../../api/endpoints', () => ({
+  ridesApi: { get: vi.fn(), cancel: vi.fn() },
+  trackingApi: { location: vi.fn() },
+  driversApi: { forRide: vi.fn() },
+  placesApi: { route: vi.fn() },
+  paymentsApi: { forRide: vi.fn(), verify: vi.fn(), retry: vi.fn() },
+}));
+
+// Leaflet needs a real layout engine; the map is covered by the browser end-to-end test
+vi.mock('../../map/MapView', () => ({
+  BaseMap: ({ children }: { children: React.ReactNode }) => <div data-testid="map">{children}</div>,
+  PickupPin: () => null,
+  DropPin: () => null,
+  RouteLine: () => null,
+  FitTo: () => null,
+  AnimatedCar: ({ lat, lng }: { lat: number; lng: number }) => <span data-testid="car">{`${lat},${lng}`}</span>,
+}));
+
+const pushes = vi.hoisted(() => new Map<string, (body: unknown) => void>());
+vi.mock('../../realtime/hooks', () => ({
+  useSubscription: (destination: string | null, handler: (body: unknown) => void) => {
+    if (destination) pushes.set(destination, handler);
+  },
+  useOnReconnect: () => undefined,
+}));
+
+const location = (o: Partial<LiveLocation> = {}): LiveLocation => ({
+  rideId: 'ride-1',
+  driverId: 'driver-1',
+  lat: 13.09,
+  lng: 80.27,
+  heading: 180,
+  speed: 8,
+  phase: 'TO_PICKUP',
+  etaS: 240,
+  distanceM: 1500,
+  etaEstimated: false,
+  at: '2026-10-14T10:01:00Z',
+  ...o,
+});
+
+function show() {
+  renderWithProviders(<LiveRide />, { path: '/ride/:rideId', route: '/ride/ride-1' });
+}
+
+describe('LiveRide', () => {
+  beforeEach(() => {
+    pushes.clear();
+    vi.mocked(placesApi.route).mockResolvedValue({ distanceM: 1500, durationS: 240, polyline: null, source: 'ESTIMATED' });
+    vi.mocked(driversApi.forRide).mockResolvedValue({
+      id: 'driver-1',
+      name: 'Driver 07',
+      vehicleType: 'ECONOMY',
+      vehicleNumber: 'TN 08 HX 1259',
+      vehicleModel: 'Tata Tiago',
+      rating: 4.8,
+    });
+  });
+
+  it('is finding a driver until one is assigned, and cancelling then is free', async () => {
+    vi.mocked(ridesApi.get).mockResolvedValue(ride());
+    vi.mocked(ridesApi.cancel).mockResolvedValue(
+      ride({ status: 'CANCELLED', cancelledBy: 'RIDER', cancelReason: 'Cancelled by rider' }),
+    );
+    show();
+    const user = userEvent.setup();
+
+    expect(await screen.findByRole('status', { name: /Finding your driver/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel ride' }));
+    expect(screen.getByText('Cancelling now is free.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Yes, cancel' }));
+
+    expect(await screen.findByText('Ride cancelled')).toBeInTheDocument();
+    expect(ridesApi.cancel).toHaveBeenCalledWith('ride-1', 'Cancelled by rider');
+    expect(screen.getByRole('button', { name: 'Book another ride' })).toBeInTheDocument();
+  });
+
+  it('shows the driver, the PIN and a live ETA that follows location pushes', async () => {
+    vi.mocked(ridesApi.get).mockResolvedValue(
+      ride({ status: 'DRIVER_ASSIGNED', driverId: 'driver-1', assignedAt: '2026-10-14T10:00:20Z' }),
+    );
+    vi.mocked(trackingApi.location).mockResolvedValue(location());
+    show();
+
+    expect(await screen.findByRole('status', { name: 'Driver arriving: 4 min' })).toBeInTheDocument();
+    expect(await screen.findByText('Driver 07')).toBeInTheDocument();
+    expect(screen.getByText('TN 08 HX 1259')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ride PIN 4 8 2 1')).toBeInTheDocument();
+    expect(screen.getByTestId('car')).toHaveTextContent('13.09,80.27');
+
+    await waitFor(() => expect(pushes.has('/topic/rides/ride-1/location')).toBe(true));
+    act(() => pushes.get('/topic/rides/ride-1/location')!(location({ lat: 13.085, etaS: 60, distanceM: 300 })));
+
+    expect(screen.getByRole('status', { name: 'Driver arriving: 1 min' })).toBeInTheDocument();
+    expect(screen.getByText('300 m away')).toBeInTheDocument();
+    expect(screen.getByTestId('car')).toHaveTextContent('13.085,80.27');
+  });
+
+  it('warns that cancelling after the driver arrived costs a fee', async () => {
+    vi.mocked(ridesApi.get).mockResolvedValue(ride({ status: 'DRIVER_ARRIVED', driverId: 'driver-1' }));
+    vi.mocked(trackingApi.location).mockResolvedValue(location({ phase: 'AT_PICKUP', etaS: 0 }));
+    show();
+    const user = userEvent.setup();
+
+    expect(await screen.findByRole('status', { name: /Your driver is here/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel ride' }));
+
+    expect(screen.getByText(/a cancellation fee applies/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel and pay fee' })).toBeInTheDocument();
+  });
+
+  it('shows the fare and the payment once the trip is over', async () => {
+    vi.mocked(ridesApi.get).mockResolvedValue(
+      ride({
+        status: 'COMPLETED',
+        driverId: 'driver-1',
+        finalFare: 124,
+        completedAt: '2026-10-14T10:20:00Z',
+        paymentStatus: 'SUCCEEDED',
+      }),
+    );
+    vi.mocked(paymentsApi.forRide).mockResolvedValue({
+      id: 'pay-1',
+      rideId: 'ride-1',
+      kind: 'RIDE_FARE',
+      status: 'SUCCEEDED',
+      amount: 124,
+      refundedAmount: 0,
+      refundable: 124,
+      provider: 'MOCK',
+      checkout: null,
+    } as Payment);
+    show();
+
+    expect(await screen.findByRole('status', { name: 'You have arrived: ₹124' })).toBeInTheDocument();
+    expect(await screen.findByText('Paid')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pay/ })).not.toBeInTheDocument();
+    expect(trackingApi.location).not.toHaveBeenCalled();
+  });
+
+  it('asks the rider to pay in Razorpay Checkout when the payment awaits them', async () => {
+    vi.mocked(ridesApi.get).mockResolvedValue(ride({ status: 'COMPLETED', driverId: 'driver-1', finalFare: 124 }));
+    vi.mocked(paymentsApi.forRide).mockResolvedValue({
+      id: 'pay-1',
+      rideId: 'ride-1',
+      kind: 'RIDE_FARE',
+      status: 'PENDING',
+      amount: 124,
+      refundedAmount: 0,
+      refundable: 0,
+      provider: 'RAZORPAY',
+      checkout: { keyId: 'rzp_test_x', orderId: 'order_1', amount: 12400, currency: 'INR', name: 'Rydex', description: 'Trip' },
+    } as Payment);
+    show();
+
+    expect(await screen.findByRole('button', { name: 'Pay ₹124' })).toBeInTheDocument();
+    expect(screen.getByText('Due')).toBeInTheDocument();
+    expect(screen.getByText(/Test mode: choose Netbanking/)).toBeInTheDocument();
+  });
+
+  it('says so when the ride is not the rider’s', async () => {
+    vi.mocked(ridesApi.get).mockRejectedValue(new ApiError(404, 'Not Found', 'Ride not found'));
+    show();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This ride does not exist or is not yours.');
+  });
+});
