@@ -9,6 +9,8 @@
 #            the socket, notifications to the rider, the driver's position streamed with an ETA
 #   Phase 5  payments: the fare charged on completion, a fee for cancelling after the driver
 #            arrived, an admin refund, and the rider notified at each step
+#   Phase 6  what the web app reads besides that: the rider's driver card, driving routes, admin
+#            KPIs and demand; and, if the frontend dev server runs, its proxy to every service
 #
 # Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081),
 # driver-service (:8082), tracking-service (:8083) and payment-service (:8084) running (see README).
@@ -23,6 +25,7 @@ param(
     [string]$DriverUrl = "http://localhost:8082",
     [string]$TrackingUrl = "http://localhost:8083",
     [string]$PaymentUrl = "http://localhost:8084",
+    [string]$FrontendUrl = "http://localhost:5173",
     [switch]$PayInBrowser
 )
 
@@ -520,6 +523,35 @@ if ($feePaid) {
 Check "payment-service Swagger UI is up" ((Api GET "$PaymentUrl/v3/api-docs").Status -eq 200)
 
 StompClose $rws
+
+# ---------------------------------------------------------------- Phase 6
+Section "Phase 6 - what the web app reads"
+$card = Api GET "$DriverUrl/api/drivers/for-ride/$rideId" $rider
+Check "rider1 sees the driver card of their ride" ($card.Status -eq 200 -and $card.Body.vehicleNumber -eq $profile.Body.vehicleNumber) "$($card.Body.name), $($card.Body.vehicleModel), $($card.Body.vehicleNumber)"
+Check "another rider cannot see it (404)" ((Api GET "$DriverUrl/api/drivers/for-ride/$rideId" $rider2).Status -eq 404)
+$route = Api GET "$RideUrl/api/places/route?fromLat=13.0831&fromLng=80.2707&toLat=13.0500&toLng=80.2824" $driverToken
+Check "a driving route for the navigation map" ($route.Status -eq 200 -and $route.Body.distanceM -gt 0) "$($route.Body.distanceM) m, $($route.Body.source)"
+$stats = Api GET "$RideUrl/api/admin/stats?hours=24" $admin
+Check "admin KPIs count today's rides" ($stats.Status -eq 200 -and $stats.Body.requested -ge 3 -and $stats.Body.completed -ge 1) "requested $($stats.Body.requested), completed $($stats.Body.completed), revenue Rs $($stats.Body.revenue)"
+$demand = Api GET "$RideUrl/api/admin/demand?hours=24" $admin
+Check "admin demand heatmap has cells" ($demand.Status -eq 200 -and @($demand.Body).Count -ge 1) "$(@($demand.Body).Count) cells"
+Check "riders cannot read admin KPIs (403)" ((Api GET "$RideUrl/api/admin/stats" $rider).Status -eq 403)
+
+$page = $null
+try { $page = Invoke-WebRequest -Uri "$FrontendUrl/" -UseBasicParsing -TimeoutSec 5 } catch { }
+if ($page) {
+    Check "the web app is served" ($page.Content -match '<div id="root">') $FrontendUrl
+    # the dev server routes each /api prefix to its service, as Caddy does in production
+    Check "frontend proxy reaches ride-service" ((Api GET "$FrontendUrl/api/me" $rider).Body.email -eq "rider1@rydex.dev")
+    Check "frontend proxy reaches driver-service" ((Api GET "$FrontendUrl/api/drivers/me" $driverToken).Status -eq 200)
+    Check "frontend proxy reaches tracking-service" ((Api GET "$FrontendUrl/api/tracking/rides/$rideId/path" $rider).Status -eq 200)
+    Check "frontend proxy reaches payment-service" ((Api GET "$FrontendUrl/api/payments/config").Status -eq 200)
+    Check "frontend proxy sends admin stats to ride-service" ((Api GET "$FrontendUrl/api/admin/stats" $admin).Status -eq 200)
+    Check "frontend proxy sends the admin grid to driver-service" ((Api GET "$FrontendUrl/api/admin/grid?lat=13.0827&lng=80.2707" $admin).Status -eq 200)
+} else {
+    Write-Host "Frontend not running at $FrontendUrl (cd frontend; npm run dev): its checks are skipped." -ForegroundColor Yellow
+}
+
 Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
 
 # ---------------------------------------------------------------- summary
