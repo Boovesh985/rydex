@@ -11,9 +11,13 @@ const PICKUP = { lat: 13.0827, lng: 80.2707 };
 
 async function register(request: APIRequestContext, role: 'RIDER' | 'DRIVER') {
   const email = `e2e-${role.toLowerCase()}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.rydex.dev`;
-  const res = await request.post('/api/auth/register', {
-    data: { name: `E2E ${role === 'RIDER' ? 'Rider' : 'Driver'}`, email, password: PASSWORD, role },
-  });
+  const data = { name: `E2E ${role === 'RIDER' ? 'Rider' : 'Driver'}`, email, password: PASSWORD, role };
+  let res = await request.post('/api/auth/register', { data });
+  // sign-ups share a 20-a-minute budget per IP with the smoke test that runs just before in CI
+  for (let attempt = 0; res.status() === 429 && attempt < 2; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, (Number(res.headers()['retry-after']) || 30) * 1000 + 500));
+    res = await request.post('/api/auth/register', { data });
+  }
   expect(res.status(), await res.text()).toBe(201);
   const body = await res.json();
   return { email, token: body.accessToken as string };
