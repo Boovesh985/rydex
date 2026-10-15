@@ -115,6 +115,10 @@ public class Ride {
     @Column(name = "refunded_amount")
     private BigDecimal refundedAmount;
 
+    /** Booked by an automated (NPC) rider (ADR 0016). */
+    @Column(nullable = false)
+    private boolean simulated;
+
     /** Wrapper type: null marks a new entity, so save() persists without a SELECT. */
     @Version
     private Long version;
@@ -298,5 +302,14 @@ public class Ride {
 
     public BigDecimal getRefundedAmount() {
         return refundedAmount;
+    }
+
+    public boolean isSimulated() {
+        return simulated;
+    }
+
+    /** At booking: the rider is an NPC the simulator plays. */
+    public void markSimulated() {
+        this.simulated = true;
     }
 }

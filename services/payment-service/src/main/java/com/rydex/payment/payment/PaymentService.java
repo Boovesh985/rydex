@@ -45,15 +45,17 @@ public class PaymentService {
 
     /**
      * Charges the rider for a ride, once: a ride has at most one payment. Joins the caller's
-     * transaction; the charge starts once it commits.
+     * transaction; the charge starts once it commits. An automated (NPC) rider of the living city
+     * always pays through the mock provider: no gateway order is ever opened for a pretend person.
      */
     @Transactional
-    public boolean chargeForRide(UUID rideId, UUID riderId, UUID driverId, Kind kind, BigDecimal amount) {
+    public boolean chargeForRide(UUID rideId, UUID riderId, UUID driverId, Kind kind, BigDecimal amount,
+                                 boolean simulatedRider) {
         if (payments.existsByRideId(rideId)) {
             return false;
         }
         Payment p = ledger.create(rideId, riderId, driverId, kind, amount.setScale(2, RoundingMode.HALF_UP),
-                providers.active());
+                simulatedRider ? Provider.MOCK : providers.active());
         AfterCommit.run(() -> processor.kick(p.getId()));
         return true;
     }

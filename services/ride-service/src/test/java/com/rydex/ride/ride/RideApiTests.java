@@ -146,6 +146,23 @@ class RideApiTests extends IntegrationTest {
     }
 
     @Test
+    void anNpcRidersRideIsMarkedSimulatedInItsViewAndEvents() {
+        var auth = api().register("RIDER");
+        String rider = token(auth);
+        String human = token(api().register("RIDER"));
+        jdbc.sql("update users set simulated = true where id = ?").param(userId(auth)).update();
+
+        UUID npcRide = book(rider);
+        UUID humanRide = book(human);
+
+        assertThat(api().get("/api/rides/" + npcRide, rider).getBody().path("simulated").asBoolean()).isTrue();
+        assertThat(api().get("/api/rides/" + humanRide, human).getBody().path("simulated").asBoolean()).isFalse();
+        String flag = jdbc.sql("select payload->'payload'->>'simulated' from outbox where aggregate_id = ?")
+                .param(npcRide.toString()).query(String.class).single();
+        assertThat(flag).isEqualTo("true");
+    }
+
+    @Test
     void idempotencyKeyReplaysTheOriginalRide() {
         String rider = token(api().register("RIDER"));
         var headers = Map.of("Idempotency-Key", "book-" + UUID.randomUUID());

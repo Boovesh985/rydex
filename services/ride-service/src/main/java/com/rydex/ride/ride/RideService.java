@@ -13,6 +13,8 @@ import com.rydex.ride.ride.RideDtos.RideView;
 import com.rydex.ride.ride.RideDtos.StatusChangeView;
 import com.rydex.ride.security.AuthUser;
 import com.rydex.ride.user.Role;
+import com.rydex.ride.user.User;
+import com.rydex.ride.user.UserRepository;
 import com.rydex.ride.web.ApiException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -56,11 +58,12 @@ public class RideService {
     private final StringRedisTemplate redis;
     private final RideProperties props;
     private final ArrivalCheck arrivals;
+    private final UserRepository users;
     private final Clock clock;
 
     RideService(RideRepository rides, RideStatusChangeRepository history, EstimateService estimates, OtpService otps,
                 OutboxWriter outbox, MarketplaceStore market, StringRedisTemplate redis, RideProperties props,
-                ArrivalCheck arrivals, Clock clock) {
+                ArrivalCheck arrivals, UserRepository users, Clock clock) {
         this.rides = rides;
         this.history = history;
         this.estimates = estimates;
@@ -70,6 +73,7 @@ public class RideService {
         this.redis = redis;
         this.props = props;
         this.arrivals = arrivals;
+        this.users = users;
         this.clock = clock;
     }
 
@@ -85,6 +89,9 @@ public class RideService {
 
         Ride ride = Ride.request(id, rider.id(), req.rideType(), pickup, drop, quote, otps.hash(id, otp),
                 req.suggestionId(), now);
+        if (users.findById(rider.id()).map(User::isSimulated).orElse(false)) {
+            ride.markSimulated();
+        }
         try {
             rides.saveAndFlush(ride);
         } catch (DataIntegrityViolationException e) {
@@ -278,7 +285,7 @@ public class RideService {
         var payload = new RidePayload(ride.getRiderId(), ride.getDriverId(), ride.getRideType(), ride.pickup(),
                 ride.drop(), ride.getFinalFare() != null ? ride.getFinalFare() : ride.getEstFare(),
                 ride.getEstDistanceM(), ride.getEstDurationS(), reason,
-                type == EventType.RIDE_CANCELLED ? ride.getCancellationFee() : null);
+                type == EventType.RIDE_CANCELLED ? ride.getCancellationFee() : null, ride.isSimulated());
         outbox.append(EventEnvelope.of(type, ride.getId().toString(), payload, clock));
     }
 

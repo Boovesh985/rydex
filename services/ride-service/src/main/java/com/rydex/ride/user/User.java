@@ -46,6 +46,10 @@ public class User {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** An automated (NPC) account the simulator plays (ADR 0016); seeded, never set by sign-up. */
+    @Column(nullable = false)
+    private boolean simulated;
+
     protected User() {
     }
 
@@ -84,6 +88,10 @@ public class User {
     /** Re-hashes with the current algorithm (bcrypt accounts move to Argon2id on sign-in). */
     public void changePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public boolean isSimulated() {
+        return simulated;
     }
 
     public Role getRole() {

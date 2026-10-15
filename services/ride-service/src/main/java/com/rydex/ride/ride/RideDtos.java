@@ -71,6 +71,7 @@ public final class RideDtos {
      * @param cancellationFee INR charged for cancelling after the driver arrived
      * @param paymentStatus   the ride's payment (fare or cancellation fee), once payment-service has one
      * @param timeline        status history; only populated on single-ride reads
+     * @param simulated       booked by an automated (NPC) rider of the living city (ADR 0016)
      */
     public record RideView(
             UUID id,
@@ -97,14 +98,15 @@ public final class RideDtos {
             BigDecimal cancellationFee,
             PaymentPayload.Status paymentStatus,
             BigDecimal refundedAmount,
-            List<StatusChangeView> timeline) {
+            List<StatusChangeView> timeline,
+            boolean simulated) {
 
         static RideView of(Ride r, String otp, List<StatusChangeView> timeline) {
             return new RideView(r.getId(), r.getStatus(), r.getRideType(), r.getRiderId(), r.getDriverId(),
                     r.pickup(), r.drop(), r.getEstFare(), r.getFinalFare(), r.getEstDistanceM(), r.getEstDurationS(),
                     r.getSurgeMultiplier(), otp, r.getRequestedAt(), r.getAssignedAt(), r.getArrivedAt(),
                     r.getStartedAt(), r.getCompletedAt(), r.getCancelledAt(), r.getCancelReason(), r.getCancelledBy(),
-                    r.getCancellationFee(), r.getPaymentStatus(), r.getRefundedAmount(), timeline);
+                    r.getCancellationFee(), r.getPaymentStatus(), r.getRefundedAmount(), timeline, r.isSimulated());
         }
     }
 

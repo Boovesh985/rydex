@@ -26,6 +26,10 @@
     "cancellationFee": {
       "type": ["number", "null"], "exclusiveMinimum": 0,
       "description": "RIDE_CANCELLED only: INR the rider pays for cancelling after the driver arrived (payment-service charges it). Null when the cancellation is free."
+    },
+    "simulated": {
+      "type": ["boolean", "null"],
+      "description": "Booked by an automated (NPC) rider of the living city (ADR 0016): payment-service charges it through the mock provider. Null (older events) means false."
     }
   },
   "$defs": {
@@ -50,7 +54,8 @@
       "estDistanceM": 22111,
       "estDurationS": 1359,
       "reason": null,
-      "cancellationFee": null
+      "cancellationFee": null,
+      "simulated": false
     }
   ]
 }

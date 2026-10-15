@@ -70,7 +70,7 @@ public class RideChargeHandler {
             }
             default -> throw new IllegalArgumentException("not a chargeable ride event: " + event.eventType());
         }
-        if (!payments.chargeForRide(rideId, p.riderId(), p.driverId(), kind, amount)) {
+        if (!payments.chargeForRide(rideId, p.riderId(), p.driverId(), kind, amount, p.bySimulatedRider())) {
             log.warn("Ride {} already has a payment; ignoring {}", rideId, event.eventType());
             return Result.IGNORED;
         }
