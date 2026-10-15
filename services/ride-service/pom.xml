@@ -25,6 +25,13 @@
             <artifactId>messaging</artifactId>
         </dependency>
 
+        <!-- Argon2id password hashing (Spring Security's Argon2PasswordEncoder needs Bouncy Castle) -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.86</version>
+        </dependency>
+
         <!-- Web + API docs -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

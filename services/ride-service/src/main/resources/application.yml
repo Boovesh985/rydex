@@ -60,10 +60,13 @@ management:
         enabled: true
 
 springdoc:
+  # API_DOCS_ENABLED=false hides Swagger UI and the OpenAPI document (e.g. on a public deployment)
   swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
     path: /swagger-ui
     persist-authorization: true
   api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
     path: /v3/api-docs
 
 resilience4j:
@@ -90,6 +93,19 @@ rydex:
     public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:../../infra/keys/jwt-public.pem}
   otp:
     secret: ${OTP_SECRET:dev-only-otp-secret-change-me-in-prod}
+  # email + phone encryption at rest (ADR 0014); 32 random bytes each: openssl rand -base64 32.
+  # The defaults are public development keys; RYDEX_STRICT_SECRETS=true refuses them.
+  crypto:
+    data-key: ${PII_DATA_KEY:ZGV2LW9ubHktcGlpLWRhdGEta2V5LTMyLWJ5dGVzISE=}
+    index-key: ${PII_INDEX_KEY:ZGV2LW9ubHktcGlpLWluZGV4LWtleS0zMmJ5dGVzISE=}
+  security:
+    # true on every deployment: no development OTP secret, PII keys or ephemeral JWT key
+    strict-secrets: ${RYDEX_STRICT_SECRETS:false}
+  auth:
+    # per account, from any IP: this many wrong passwords lock sign-in for the window
+    lockout:
+      max-failures: 10
+      window: 15m
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   rides:

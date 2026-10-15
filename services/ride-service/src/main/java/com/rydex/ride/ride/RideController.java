@@ -89,13 +89,15 @@ class RideController {
     }
 
     @GetMapping
-    @Operation(summary = "Ride history, newest first. Riders/drivers always see their own rides; admins see all unless mine=true.")
+    @Operation(summary = "Ride history, newest first. Riders/drivers always see their own rides; admins see all "
+            + "unless mine=true, or only the rides in flight with active=true.")
     PageView<RideView> list(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(defaultValue = "true") boolean mine,
+            @RequestParam(defaultValue = "false") boolean active,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return rides.list(AuthUser.from(jwt), mine, page, size);
+        return rides.list(AuthUser.from(jwt), mine, active, page, size);
     }
 
     @PostMapping("/{id}/cancel")

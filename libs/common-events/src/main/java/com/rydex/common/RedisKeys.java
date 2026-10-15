@@ -87,6 +87,11 @@ public final class RedisKeys {
         return "ratelimit:" + subject + ":" + route + ":" + window;
     }
 
+    /** Failed sign-ins for one account (keyed by its email lookup hash), for the lockout. */
+    public static String loginFailures(String emailHash) {
+        return "auth:fail:" + emailHash;
+    }
+
     public static String idempotency(UUID userId, String key) {
         return "idem:" + userId + ":" + key;
     }

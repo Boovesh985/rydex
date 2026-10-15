@@ -1,6 +1,8 @@
 package com.rydex.ride.user;
 
+import com.rydex.ride.crypto.EncryptedString;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -9,6 +11,10 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * An account. Email and phone are encrypted at rest; {@code emailHash} (a keyed HMAC of the
+ * normalised email) finds the account at sign-in (ADR 0014).
+ */
 @Entity
 @Table(name = "users")
 public class User {
@@ -19,9 +25,15 @@ public class User {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false)
+    @Column(name = "email_hash", nullable = false)
+    private String emailHash;
+
+    @Convert(converter = EncryptedString.class)
+    @Column(name = "email_enc", nullable = false)
     private String email;
 
+    @Convert(converter = EncryptedString.class)
+    @Column(name = "phone_enc")
     private String phone;
 
     @Column(name = "password_hash", nullable = false)
@@ -37,10 +49,12 @@ public class User {
     protected User() {
     }
 
-    public User(String name, String email, String phone, String passwordHash, Role role, Instant createdAt) {
+    public User(String name, String email, String emailHash, String phone, String passwordHash, Role role,
+                Instant createdAt) {
         this.id = UUID.randomUUID();
         this.name = name;
         this.email = email;
+        this.emailHash = emailHash;
         this.phone = phone;
         this.passwordHash = passwordHash;
         this.role = role;
@@ -65,6 +79,11 @@ public class User {
 
     public String getPasswordHash() {
         return passwordHash;
+    }
+
+    /** Re-hashes with the current algorithm (bcrypt accounts move to Argon2id on sign-in). */
+    public void changePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 
     public Role getRole() {

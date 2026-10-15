@@ -3,6 +3,7 @@ package com.rydex.ride.auth;
 import com.rydex.ride.auth.AuthDtos.AuthResponse;
 import com.rydex.ride.auth.AuthDtos.LoginRequest;
 import com.rydex.ride.auth.AuthDtos.RegisterRequest;
+import com.rydex.ride.crypto.FieldCipher;
 import com.rydex.ride.security.JwtProperties;
 import com.rydex.ride.security.TokenService;
 import com.rydex.ride.user.Role;
@@ -37,17 +38,22 @@ class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
     private final JwtProperties jwtProps;
+    private final FieldCipher cipher;
+    private final LoginThrottle throttle;
     private final Clock clock;
-    /** Compared against when the email is unknown so both paths cost one bcrypt check. */
+    /** Compared against when the email is unknown so both paths cost one password check. */
     private final String dummyHash;
 
     AuthService(UserRepository users, RefreshTokenRepository refreshTokens, PasswordEncoder passwordEncoder,
-                TokenService tokenService, JwtProperties jwtProps, Clock clock) {
+                TokenService tokenService, JwtProperties jwtProps, FieldCipher cipher, LoginThrottle throttle,
+                Clock clock) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.jwtProps = jwtProps;
+        this.cipher = cipher;
+        this.throttle = throttle;
         this.clock = clock;
         this.dummyHash = passwordEncoder.encode("timing-equaliser");
     }
@@ -57,11 +63,16 @@ class AuthService {
         if (req.role() == Role.ADMIN) {
             throw ApiException.forbidden("Admin accounts cannot be self-registered");
         }
-        String email = req.email().trim().toLowerCase(Locale.ROOT);
-        if (users.existsByEmail(email)) {
+        String email = FieldCipher.normaliseEmail(req.email());
+        String emailHash = cipher.emailIndex(email);
+        String localPart = email.substring(0, email.indexOf('@'));
+        if (localPart.length() >= 4 && req.password().toLowerCase(Locale.ROOT).contains(localPart)) {
+            throw ApiException.unprocessable("Choose a password that does not contain your email address");
+        }
+        if (users.existsByEmailHash(emailHash)) {
             throw ApiException.conflict("An account with this email already exists");
         }
-        var user = new User(req.name().trim(), email, req.phone(), passwordEncoder.encode(req.password()),
+        var user = new User(req.name().trim(), email, emailHash, req.phone(), passwordEncoder.encode(req.password()),
                 req.role(), clock.instant());
         try {
             users.saveAndFlush(user);
@@ -71,13 +82,24 @@ class AuthService {
         return issueTokens(user);
     }
 
-    @Transactional
+    /**
+     * Checks the password (the same work whether or not the account exists), locks the account
+     * after repeated failures, and moves an old bcrypt hash to Argon2id once the password is known.
+     */
+    @Transactional(noRollbackFor = ApiException.class)
     AuthResponse login(LoginRequest req) {
-        var user = users.findByEmail(req.email().trim()).orElse(null);
+        String emailHash = cipher.emailIndex(req.email());
+        throttle.check(emailHash);
+        var user = users.findByEmailHash(emailHash).orElse(null);
         String hash = user != null ? user.getPasswordHash() : dummyHash;
         boolean matches = passwordEncoder.matches(req.password(), hash);
         if (user == null || !matches) {
+            throttle.failed(emailHash);
             throw ApiException.unauthorized("Invalid email or password");
+        }
+        throttle.succeeded(emailHash);
+        if (passwordEncoder.upgradeEncoding(hash)) {
+            user.changePasswordHash(passwordEncoder.encode(req.password()));
         }
         return issueTokens(user);
     }

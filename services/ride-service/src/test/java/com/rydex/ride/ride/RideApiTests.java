@@ -294,6 +294,28 @@ class RideApiTests extends IntegrationTest {
         assertThat(page.path("items").get(1).path("id").asString()).isEqualTo(first.toString());
     }
 
+    @Test
+    void adminsCanListTheRidesInFlight() {
+        String rider = token(api().register("RIDER"));
+        UUID cancelled = book(rider);
+        api().post("/api/rides/" + cancelled + "/cancel", rider, null);
+        UUID inFlight = book(rider);
+        String admin = token(api().post("/api/auth/login", null,
+                Map.of("email", "admin@rydex.dev", "password", "Rydex@123")).getBody());
+
+        var active = api().get("/api/rides?mine=false&active=true&size=100", admin).getBody();
+        var all = api().get("/api/rides?mine=false&size=100", admin).getBody();
+        var riderView = api().get("/api/rides?active=true", rider).getBody();
+
+        assertThat(active.path("items").valueStream().map(r -> r.path("id").asString()))
+                .contains(inFlight.toString()).doesNotContain(cancelled.toString());
+        assertThat(active.path("items").valueStream().map(r -> r.path("status").asString()))
+                .allMatch(s -> List.of("REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ARRIVED", "IN_PROGRESS").contains(s));
+        assertThat(all.path("items").valueStream().map(r -> r.path("id").asString())).contains(cancelled.toString());
+        // riders keep seeing their own history whatever they ask for
+        assertThat(riderView.path("total").asInt()).isEqualTo(2);
+    }
+
     private UUID book(String riderToken) {
         var res = api().post("/api/rides", riderToken, booking());
         assertThat(res.getStatusCode().value()).as(String.valueOf(res.getBody())).isEqualTo(201);

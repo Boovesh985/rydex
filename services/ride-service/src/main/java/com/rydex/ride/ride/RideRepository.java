@@ -1,6 +1,7 @@
 package com.rydex.ride.ride;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -15,6 +16,8 @@ public interface RideRepository extends JpaRepository<Ride, UUID> {
     Page<Ride> findByDriverIdOrderByRequestedAtDesc(UUID driverId, Pageable pageable);
 
     Page<Ride> findAllByOrderByRequestedAtDesc(Pageable pageable);
+
+    Page<Ride> findByStatusInOrderByRequestedAtDesc(Collection<RideStatus> statuses, Pageable pageable);
 
     @Query("select r.id from Ride r where r.status = :status and r.requestedAt < :before order by r.requestedAt")
     List<UUID> findIdsByStatusRequestedBefore(RideStatus status, Instant before, Pageable pageable);

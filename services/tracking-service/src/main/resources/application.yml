@@ -59,10 +59,13 @@ management:
         enabled: true
 
 springdoc:
+  # API_DOCS_ENABLED=false hides Swagger UI and the OpenAPI document (e.g. on a public deployment)
   swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
     path: /swagger-ui
     persist-authorization: true
   api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
     path: /v3/api-docs
 
 resilience4j:

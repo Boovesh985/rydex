@@ -44,6 +44,8 @@ public class RideService {
     static final String UNMATCHED_REASON = "No driver found in time";
     private static final Set<RideStatus> OTP_VISIBLE =
             EnumSet.of(RideStatus.REQUESTED, RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_ARRIVED);
+    private static final Set<RideStatus> IN_FLIGHT = EnumSet.of(RideStatus.REQUESTED, RideStatus.DRIVER_ASSIGNED,
+            RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS);
 
     private final RideRepository rides;
     private final RideStatusChangeRepository history;
@@ -103,12 +105,14 @@ public class RideService {
     }
 
     @Transactional(readOnly = true)
-    public PageView<RideView> list(AuthUser caller, boolean mine, int page, int size) {
+    public PageView<RideView> list(AuthUser caller, boolean mine, boolean active, int page, int size) {
         var pageable = PageRequest.of(page, size);
         Page<Ride> result = switch (caller.role()) {
             case RIDER -> rides.findByRiderIdOrderByRequestedAtDesc(caller.id(), pageable);
             case DRIVER -> rides.findByDriverIdOrderByRequestedAtDesc(caller.id(), pageable);
-            case ADMIN -> mine ? Page.empty(pageable) : rides.findAllByOrderByRequestedAtDesc(pageable);
+            case ADMIN -> mine ? Page.empty(pageable)
+                    : active ? rides.findByStatusInOrderByRequestedAtDesc(IN_FLIGHT, pageable)
+                    : rides.findAllByOrderByRequestedAtDesc(pageable);
         };
         return new PageView<>(result.map(r -> RideView.of(r, otpFor(caller, r), null)).getContent(),
                 page, size, result.getTotalElements());
