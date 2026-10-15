@@ -83,15 +83,17 @@ export class PathIndex {
 
   /**
    * The closest point of the path to `point`: how far along the path it is, and how far off
-   * the path `point` lies (metres, flat-earth approximation, fine at city scale).
+   * the path `point` lies (metres, flat-earth approximation, fine at city scale). `within`
+   * limits the search to that stretch of the path (metres along it).
    */
-  project(point: LatLng): { along: number; offset: number } {
+  project(point: LatLng, within?: { from: number; to: number }): { along: number; offset: number } {
     const p = this.path;
     if (p.length < 2) return { along: 0, offset: p.length ? haversine(p[0], point) : Infinity };
     const kx = Math.cos(rad(point[0])) * 111_320;
     const ky = 110_540;
     let best = { along: 0, offset: Infinity };
     for (let i = 1; i < p.length; i++) {
+      if (within && (this.cumulative[i] < within.from || this.cumulative[i - 1] > within.to)) continue;
       const ax = (p[i - 1][1] - point[1]) * kx;
       const ay = (p[i - 1][0] - point[0]) * ky;
       const bx = (p[i][1] - point[1]) * kx;
@@ -99,7 +101,14 @@ export class PathIndex {
       const dx = bx - ax;
       const dy = by - ay;
       const len2 = dx * dx + dy * dy;
-      const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2));
+      let t = len2 === 0 ? 0 : Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2));
+      if (within) {
+        // only the part of this segment inside the stretch searched
+        const c0 = this.cumulative[i - 1];
+        const seg = this.cumulative[i] - c0;
+        if (seg > 0) t = Math.min(Math.max(t, (within.from - c0) / seg), (within.to - c0) / seg);
+        t = Math.min(1, Math.max(0, t));
+      }
       const cx = ax + dx * t;
       const cy = ay + dy * t;
       const offset = Math.hypot(cx, cy);
@@ -109,6 +118,42 @@ export class PathIndex {
     }
     return best;
   }
+}
+
+/** A fix further than this from the route is off it (GPS noise on a matched road stays well inside). */
+export const OFF_ROUTE_M = 45;
+
+export interface RouteMatch {
+  /** metres along the route; never goes backwards for one vehicle on one route */
+  along: number;
+  /** metres between the fix and the route */
+  offset: number;
+  onRoute: boolean;
+  /** the fix this match was last on the route at */
+  point: LatLng;
+}
+
+/**
+ * Where a moving vehicle is along its route. Each fix is looked for on the stretch just ahead of
+ * the previous match (as far as it could have driven), so a route that passes the same spot twice
+ * (a U-turn, the two sides of a divided road) cannot pull it back to the earlier pass, and the
+ * distance along only ever grows. Off the route, the last match is kept.
+ */
+export function matchOnRoute(index: PathIndex, point: LatLng, prev: RouteMatch | null): RouteMatch {
+  if (!prev) {
+    const m = index.project(point);
+    return { along: m.along, offset: m.offset, onRoute: m.offset <= OFF_ROUTE_M, point };
+  }
+  // a road between two fixes is rarely 2.5x longer than the straight line between them
+  const reach = haversine(prev.point, point) * 2.5 + 300;
+  let m = index.project(point, { from: prev.along - 30, to: prev.along + reach });
+  if (m.offset > OFF_ROUTE_M) {
+    // back on the route further ahead than expected (a dropped connection, a short cut)
+    const anywhere = index.project(point);
+    if (anywhere.offset <= OFF_ROUTE_M && anywhere.along >= prev.along) m = anywhere;
+  }
+  if (m.offset > OFF_ROUTE_M) return { ...prev, offset: m.offset, onRoute: false };
+  return { along: Math.max(prev.along, m.along), offset: m.offset, onRoute: true, point };
 }
 
 /** Metres per screen pixel at a zoom level and latitude (Web Mercator, 512 px tiles). */

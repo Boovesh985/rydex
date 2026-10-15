@@ -112,6 +112,9 @@ describe('LiveRide', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByRole('status', { name: /Your driver is here/ })).toBeInTheDocument();
+    // the PIN is what the driver needs now
+    expect(screen.getByRole('group', { name: 'Your ride PIN' })).toHaveTextContent('Tell your driver this PIN');
+    expect(screen.getByLabelText('Ride PIN 4 8 2 1')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel ride' }));
 
     expect(screen.getByText(/a cancellation fee applies/)).toBeInTheDocument();

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Star } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { driversApi, placesApi, ridesApi, trackingApi } from '../../api/endpoints';
+import { driversApi, ridesApi, trackingApi } from '../../api/endpoints';
 import { ApiError, errorMessage } from '../../api/http';
 import { ACTIVE_STATUSES, type DriverCard, type LiveLocation, type Ride } from '../../api/types';
 import { PaymentPanel } from '../../components/PaymentPanel';
@@ -10,11 +10,10 @@ import { RealisticButton, RealisticHud, TripProgress } from '../../components/Re
 import { RideTimeline } from '../../components/RideTimeline';
 import { Button, ErrorNote, Eyebrow, Meter, PinTiles, Plate, Sheet, Spinner } from '../../components/ui';
 import { distance, inr, minutes, rideTypeLabel, shortAddress } from '../../lib/format';
-import { PathIndex, type LatLng } from '../../lib/geo';
-import { decodePolyline } from '../../lib/polyline';
+import { newest, type LatLng } from '../../lib/geo';
 import { AnimatedCar, BaseMap, DropPin, FitTo, PickupPin, RouteLine } from '../../map/MapView';
+import { useFollowedRoute, type Leg } from '../../map/useFollowedRoute';
 import { useRealistic } from '../../map/useRealistic';
-import { newest } from '../../lib/geo';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
 
 const TRACKED = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
@@ -65,23 +64,19 @@ function RideScreen({ rideId }: { rideId: string }) {
     staleTime: Infinity,
   });
 
-  // the road ahead: driver -> pickup while they come, pickup -> drop otherwise
-  const toPickup = r?.status === 'DRIVER_ASSIGNED' && location;
-  const routeFrom = toPickup ? { lat: location.lat, lng: location.lng } : r?.pickup;
-  const routeTo = toPickup ? r?.pickup : r?.drop;
-  const route = useQuery({
-    queryKey: ['route', rideId, toPickup ? 'to-pickup' : 'trip'],
-    queryFn: () => placesApi.route(routeFrom!, routeTo!),
-    enabled: !!routeFrom && !!routeTo && !!r && r.status !== 'COMPLETED' && r.status !== 'CANCELLED',
-    staleTime: Infinity,
-  });
-  const routePoints = useMemo<LatLng[] | null>(() => {
-    if (!route.data || !routeFrom || !routeTo) return null;
-    return route.data.polyline ? decodePolyline(route.data.polyline) : [[routeFrom.lat, routeFrom.lng], [routeTo.lat, routeTo.lng]];
-    // the route only changes with its query
-  }, [route.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pathIndex = useMemo(() => (routePoints && routePoints.length > 1 ? new PathIndex(routePoints) : null), [routePoints]);
-  const progress = pathIndex && location && tracked && pathIndex.length > 0 ? pathIndex.project([location.lat, location.lng]).along / pathIndex.length : null;
+  // the road ahead: driver -> pickup while they come (from where they were first seen), pickup -> drop
+  // otherwise; the car is matched to it fix by fix, and a new route is planned if the driver leaves it
+  const toPickup = r?.status === 'DRIVER_ASSIGNED';
+  const leg = useMemo<Leg | null>(() => {
+    if (!r || !ACTIVE_STATUSES.includes(r.status)) return null;
+    return toPickup
+      ? { key: `${r.id}:to-pickup`, from: location ? [location.lat, location.lng] : null, to: [r.pickup.lat, r.pickup.lng] }
+      : { key: `${r.id}:trip`, from: [r.pickup.lat, r.pickup.lng], to: [r.drop.lat, r.drop.lng] };
+  }, [r, toPickup, location]);
+  const moving = tracked && r?.status !== 'DRIVER_ARRIVED' ? location : null;
+  const road = useFollowedRoute(leg, moving);
+  const routePoints = road.points;
+  const progress = r?.status === 'IN_PROGRESS' ? road.legProgress : null;
 
   const hasLocation = !!location;
   const fit = useMemo<LatLng[]>(() => {
@@ -118,7 +113,7 @@ function RideScreen({ rideId }: { rideId: string }) {
       <BaseMap realistic={rx.active} night={rx.night}>
         <PickupPin at={[r.pickup.lat, r.pickup.lng]} />
         {r.status !== 'DRIVER_ASSIGNED' && r.status !== 'DRIVER_ARRIVED' && <DropPin at={[r.drop.lat, r.drop.lng]} />}
-        {routePoints && <RouteLine polyline={route.data?.polyline} fallback={routePoints} progress={progress} />}
+        {routePoints && <RouteLine polyline={road.polyline} fallback={routePoints} progress={moving ? road.lineProgress : null} />}
         {tracked && location && (
           <AnimatedCar
             lat={location.lat}
@@ -156,12 +151,7 @@ function RideScreen({ rideId }: { rideId: string }) {
             {r.status === 'IN_PROGRESS' && progress != null && (
               <TripProgress progress={progress} from={shortAddress(r.pickup.address)} to={shortAddress(r.drop.address)} />
             )}
-            {r.otp && (r.status === 'DRIVER_ASSIGNED' || r.status === 'DRIVER_ARRIVED') && (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-bold">Your ride PIN</p>
-                <PinTiles pin={r.otp} />
-              </div>
-            )}
+            {r.otp && (r.status === 'DRIVER_ASSIGNED' || r.status === 'DRIVER_ARRIVED') && <RidePin pin={r.otp} here={r.status === 'DRIVER_ARRIVED'} />}
           </div>
         </RealisticHud>
       ) : (
@@ -210,21 +200,13 @@ function RideSheet({ ride, location, driver, progress }: { ride: Ride; location:
     <div className="space-y-4">
       <StatusMeter ride={ride} location={location} />
 
+      {ride.otp && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED') && <RidePin pin={ride.otp} here={s === 'DRIVER_ARRIVED'} />}
+
       {s === 'IN_PROGRESS' && progress != null && (
         <TripProgress progress={progress} from={shortAddress(ride.pickup.address)} to={shortAddress(ride.drop.address)} />
       )}
 
       {driver && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED' || s === 'IN_PROGRESS') && <DriverPanel driver={driver} />}
-
-      {ride.otp && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED') && (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-chalk p-3">
-          <div>
-            <p className="font-bold">Your ride PIN</p>
-            <p className="text-sm text-slate">Tell it to your driver to start the trip.</p>
-          </div>
-          <PinTiles pin={ride.otp} />
-        </div>
-      )}
 
       <Trip ride={ride} />
 
@@ -273,6 +255,21 @@ function StatusMeter({ ride, location }: { ride: Ride; location: LiveLocation | 
           <div className="h-full w-1/3 animate-[rx-scan_1.4s_ease-in-out_infinite] rounded-full bg-auto motion-reduce:animate-none" />
         </div>
       )}
+    </div>
+  );
+}
+
+/** The PIN the driver must type to start the trip: the rider reads it out when they get in. */
+function RidePin({ pin, here }: { pin: string; here: boolean }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 rounded-xl p-3 ${here ? 'bg-auto text-ink ring-2 ring-ink' : 'bg-chalk'}`} role="group" aria-label="Your ride PIN">
+      <div>
+        <p className="font-bold">{here ? 'Tell your driver this PIN' : 'Your ride PIN'}</p>
+        <p className={`text-sm ${here ? '' : 'text-slate'}`}>
+          {here ? 'They type it in to start the trip. Never share it before you are in the car.' : 'Your driver asks for it at pickup to start the trip.'}
+        </p>
+      </div>
+      <PinTiles pin={pin} />
     </div>
   );
 }

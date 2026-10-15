@@ -115,16 +115,20 @@ class Session:
         self.email = email
         self.password = password
         self.tokens: Tokens | None = None
+        # one refresh at a time: two tasks refreshing with the same (single-use) refresh token look like
+        # token theft to ride-service, which then revokes every session of the driver
+        self._lock = asyncio.Lock()
 
     async def token(self) -> str:
-        if self.tokens is None:
-            self.tokens = await self.api.login(self.email, self.password)
-        elif self.tokens.expires_at - time.monotonic() < 90:
-            try:
-                self.tokens = await self.api.refresh(self.tokens)
-            except ApiError:
+        async with self._lock:
+            if self.tokens is None:
                 self.tokens = await self.api.login(self.email, self.password)
-        return self.tokens.access
+            elif self.tokens.expires_at - time.monotonic() < 90:
+                try:
+                    self.tokens = await self.api.refresh(self.tokens)
+                except ApiError:
+                    self.tokens = await self.api.login(self.email, self.password)
+            return self.tokens.access
 
     async def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         """JSON body of a 2xx (None for 204); raises ApiError otherwise. Retries once after a refresh on 401."""

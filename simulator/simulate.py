@@ -45,6 +45,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--radius-km", type=float, default=4.0, help="how far from the centre drivers roam (default 4)")
     p.add_argument("--accept-rate", type=float, default=0.85, help="chance a driver accepts an offer (default 0.85)")
     p.add_argument("--speedup", type=float, default=1.0, help="drive this many times faster than real time (default 1)")
+    p.add_argument("--board-seconds", type=float, default=20.0,
+                   help="how long a driver waits at the pickup for the rider's PIN (real time; default 20)")
     p.add_argument("--park", action="store_true", help="idle drivers stay put instead of cruising (fewer route lookups)")
     p.add_argument("--api", default=os.environ.get("RYDEX_API"),
                    help="one origin that routes /api/* by prefix, e.g. https://rydex.duckdns.org "
@@ -76,7 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 async def run(args: argparse.Namespace) -> None:
     endpoints = Endpoints(args.api, args.ws)
     settings = Settings(center=args.center, radius_m=args.radius_km * 1000, accept_rate=args.accept_rate,
-                        speedup=args.speedup, cruise=not args.park, otp_secret=args.otp_secret or None)
+                        speedup=args.speedup, cruise=not args.park, board_s=args.board_seconds, otp_secret=args.otp_secret or None)
     stats = Stats()
     budget = AuthBudget(args.auth_per_minute)
     rng = random.Random(args.seed)

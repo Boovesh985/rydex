@@ -31,6 +31,8 @@ class Settings:
     cruise_kmh: float = 22
     cruise: bool = True
     otp_secret: str | None = None
+    # seconds a driver waits at the pickup for the rider to read out their PIN (real time, not sped up)
+    board_s: float = 20.0
 
 
 @dataclass
@@ -237,11 +239,12 @@ class SimDriver:
         try:
             if status == "DRIVER_ASSIGNED":
                 await self._drive_or_cancel(await self._route(self.pos, pickup), self.s.trip_kmh)
-                await self._step("arrived", ride_id)
-                log.info("%s arrived at pickup for %s", self.label, short)
+                await self._arrive(ride_id)
+                log.info("%s arrived at pickup for %s, waiting for the rider's PIN", self.label, short)
                 status = "DRIVER_ARRIVED"
             if status == "DRIVER_ARRIVED":
-                await self._wait_or_cancel(self.rng.uniform(3, 8) / max(1.0, self.s.speedup ** 0.5))
+                # the rider walks up and reads out the PIN on their screen
+                await self._wait_or_cancel(self.s.board_s * self.rng.uniform(0.8, 1.2))
                 if not await self._start(ride_id):
                     return
                 status = "IN_PROGRESS"
@@ -278,13 +281,30 @@ class SimDriver:
                 return False
             raise TripOver(e.detail) from e
 
+    async def _arrive(self, ride_id: str) -> None:
+        """ride-service only accepts an arrival near the pickup: let the reporter send the parked
+        position first, and try again once if an older position was still the latest."""
+        await self._wait_or_cancel(REPORT_S + 0.5)
+        try:
+            await self.session.call("POST", f"/api/rides/{ride_id}/arrived")
+        except ApiError as e:
+            if e.status != 409 or "from the pickup" not in (e.detail or ""):
+                await self._step_failed(e)
+            await self._wait_or_cancel(REPORT_S + 0.5)
+            await self._step("arrived", ride_id)
+
     async def _step(self, action: str, ride_id: str) -> dict[str, Any]:
         try:
             return await self.session.call("POST", f"/api/rides/{ride_id}/{action}")
         except ApiError as e:
-            if e.status in (404, 409):
-                raise TripOver(e.detail) from e
+            await self._step_failed(e)
             raise
+
+    @staticmethod
+    async def _step_failed(e: ApiError) -> None:
+        if e.status in (404, 409):
+            raise TripOver(e.detail) from e
+        raise e
 
     async def _wait_or_cancel(self, seconds: float) -> None:
         with contextlib.suppress(asyncio.TimeoutError):

@@ -66,7 +66,7 @@ public class EtaService {
         }
         Instant now = clock.instant();
         String key = "tracking:eta:" + rideId + ":" + phase;
-        Eta cached = countDown(redis.<String, String>opsForHash().entries(key), now);
+        Eta cached = countDown(redis.<String, String>opsForHash().entries(key), now, from, to);
         if (cached != null) {
             return cached;
         }
@@ -88,6 +88,9 @@ public class EtaService {
                         "seconds", Integer.toString(fresh.seconds()),
                         "meters", Integer.toString(fresh.meters()),
                         "estimated", Boolean.toString(fresh.estimated()),
+                        // where the driver was: later updates scale the ETA by how much of the way is left
+                        "fromLat", Double.toString(from.lat()),
+                        "fromLng", Double.toString(from.lng()),
                         // counted down from when the driver was where this route starts
                         "at", Long.toString(asked.toEpochMilli())));
                 redis.expire(key, refresh);
@@ -104,17 +107,31 @@ public class EtaService {
         refresher.shutdownNow();
     }
 
-    /** The stored ETA minus the time since it was computed (distance scaled alike), or null if none. */
-    private static Eta countDown(Map<String, String> stored, Instant now) {
+    /**
+     * The stored ETA for where the driver is now, or null if none. It is scaled by how much of the
+     * (straight-line) way to the target is left since it was computed, so it follows the car
+     * whatever its pace: a car stuck at a light keeps its ETA, a fast one sees it fall as fast.
+     * Stored without a start point (or with a start too close to judge), it counts down with time.
+     */
+    static Eta countDown(Map<String, String> stored, Instant now, GeoPoint at, GeoPoint to) {
         if (stored == null || stored.get("seconds") == null || stored.get("at") == null) {
             return null;
         }
         int seconds = Integer.parseInt(stored.get("seconds"));
         int meters = Integer.parseInt(stored.get("meters"));
+        boolean estimated = Boolean.parseBoolean(stored.get("estimated"));
+        if (stored.get("fromLat") != null && stored.get("fromLng") != null) {
+            GeoPoint start = GeoPoint.of(Double.parseDouble(stored.get("fromLat")), Double.parseDouble(stored.get("fromLng")));
+            double then = start.distanceMetersTo(to);
+            if (then >= 50) {
+                double share = Math.min(1.5, at.distanceMetersTo(to) / then);
+                return new Eta((int) Math.round(seconds * share), (int) Math.round(meters * share), estimated);
+            }
+        }
         long elapsed = Math.max(0, Duration.between(Instant.ofEpochMilli(Long.parseLong(stored.get("at"))), now).toSeconds());
         int left = (int) Math.max(0, seconds - elapsed);
         int metersLeft = seconds == 0 ? 0 : (int) Math.round((double) meters * left / seconds);
-        return new Eta(left, metersLeft, Boolean.parseBoolean(stored.get("estimated")));
+        return new Eta(left, metersLeft, estimated);
     }
 
     private Eta route(GeoPoint from, GeoPoint to) {

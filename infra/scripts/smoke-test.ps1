@@ -418,7 +418,11 @@ Check "rider1 sees driver01 move, with an ETA" ($live.Json.phase -eq "TO_PICKUP"
 $restLoc = Api GET "$TrackingUrl/api/tracking/rides/$ride3/location" $rider
 Check "the same position over REST (for screens opened mid-ride)" ($restLoc.Status -eq 200 -and $restLoc.Body.lat -eq 13.085)
 
-Api POST "$RideUrl/api/rides/$ride3/arrived" $driverToken | Out-Null
+# marking arrival needs the car near the pickup (ride-service checks the last position)
+Start-Sleep -Milliseconds 600
+Api POST "$DriverUrl/api/drivers/me/location" $driverToken @{ lat = 13.0828; lng = 80.2707; heading = 180; speed = 0 } | Out-Null
+$early = Api POST "$RideUrl/api/rides/$ride3/arrived" $driverToken
+Check "driver01 can mark arrival once at the pickup" ($early.Body.status -eq "DRIVER_ARRIVED") "HTTP $($early.Status) $($early.Body.detail)"
 $arrivedNote = StompMessage $rws $riderNotes 15000 { param($j) $j.type -eq "DRIVER_ARRIVED" -and $j.rideId -eq $ride3 }
 Check "rider1 is notified: driver has arrived" ($null -ne $arrivedNote) "$($arrivedNote.Json.message)"
 Api POST "$RideUrl/api/rides/$ride3/start" $driverToken @{ otp = $otp3 } | Out-Null

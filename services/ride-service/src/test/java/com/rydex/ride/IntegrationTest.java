@@ -1,9 +1,14 @@
 package com.rydex.ride;
 
+import com.rydex.common.RedisKeys;
 import com.rydex.ride.geo.NominatimClient;
 import com.rydex.ride.geo.OsrmClient;
+import com.rydex.ride.ride.Ride;
+import com.rydex.ride.ride.RideRepository;
 import com.github.dockerjava.api.exception.NotFoundException;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -97,10 +102,25 @@ public abstract class IntegrationTest {
     @Autowired
     protected StringRedisTemplate redis;
 
+    @Autowired
+    private RideRepository rideRepository;
+
     @LocalServerPort
     protected int port;
 
     protected TestApi api() {
         return new TestApi(port);
+    }
+
+    /** The assigned driver reports a position at the pickup (marking arrival needs one nearby). */
+    protected void driverAtPickup(UUID rideId) {
+        Ride ride = rideRepository.findById(rideId).orElseThrow();
+        driverAt(ride.getDriverId(), ride.pickup().lat(), ride.pickup().lng());
+    }
+
+    /** What tracking-service's presence store keeps for a driver's last location. */
+    protected void driverAt(UUID driverId, double lat, double lng) {
+        redis.opsForHash().putAll(RedisKeys.driverLocation(driverId), Map.of("lat", Double.toString(lat),
+                "lng", Double.toString(lng), "ts", Long.toString(System.currentTimeMillis())));
     }
 }

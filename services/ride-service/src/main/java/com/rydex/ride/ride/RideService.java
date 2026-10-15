@@ -55,11 +55,12 @@ public class RideService {
     private final MarketplaceStore market;
     private final StringRedisTemplate redis;
     private final RideProperties props;
+    private final ArrivalCheck arrivals;
     private final Clock clock;
 
     RideService(RideRepository rides, RideStatusChangeRepository history, EstimateService estimates, OtpService otps,
                 OutboxWriter outbox, MarketplaceStore market, StringRedisTemplate redis, RideProperties props,
-                Clock clock) {
+                ArrivalCheck arrivals, Clock clock) {
         this.rides = rides;
         this.history = history;
         this.estimates = estimates;
@@ -68,6 +69,7 @@ public class RideService {
         this.market = market;
         this.redis = redis;
         this.props = props;
+        this.arrivals = arrivals;
         this.clock = clock;
     }
 
@@ -139,6 +141,9 @@ public class RideService {
     public RideView markArrived(AuthUser driver, UUID rideId) {
         Ride ride = loadForAssignedDriver(driver, rideId);
         RideStatus from = ride.getStatus();
+        if (from == RideStatus.DRIVER_ASSIGNED) {
+            arrivals.requireNear(driver.id(), ride.pickup());
+        }
         Instant now = clock.instant();
         ride.markDriverArrived(now);
         record(ride, from, driver.actor(), now);
@@ -156,10 +161,13 @@ public class RideService {
         Long attempts = redis.opsForValue().increment(attemptsKey);
         redis.expire(attemptsKey, Duration.ofHours(1));
         if (attempts != null && attempts > MAX_OTP_ATTEMPTS) {
-            throw ApiException.tooManyRequests("Too many incorrect OTP attempts; ask the rider to contact support", 3600);
+            throw ApiException.tooManyRequests("Too many wrong PINs for this ride; the rider can cancel and book again", 3600);
         }
         if (!otps.matches(rideId, otp, ride.getOtpHash())) {
-            throw ApiException.unprocessable("Incorrect OTP");
+            long left = MAX_OTP_ATTEMPTS - (attempts == null ? 0 : attempts);
+            throw ApiException.unprocessable(left > 0
+                    ? "Wrong PIN. Ask the rider to read out the 4-digit PIN on their screen (" + left + (left == 1 ? " try" : " tries") + " left)"
+                    : "Wrong PIN, and that was the last try for this ride");
         }
         RideStatus from = ride.getStatus();
         Instant now = clock.instant();

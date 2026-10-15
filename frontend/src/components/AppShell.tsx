@@ -32,6 +32,23 @@ export function AppShell() {
   const navigate = useNavigate();
   const seen = useRef(new Set<string>());
 
+  // tabs share one session: when another tab signs in as someone else, this tab follows, and must not
+  // keep showing (or acting on) the previous account's rides
+  const userId = session?.user.id;
+  const shownUser = useRef(userId);
+  useEffect(() => {
+    const before = shownUser.current;
+    shownUser.current = userId;
+    if (!before || !userId || before === userId) return;
+    const user = useAuth.getState().session?.user;
+    queryClient.clear();
+    seen.current.clear();
+    if (user) {
+      toast(`Signed in as ${user.name}`, 'Another tab signed in to a different account, so this one switched too. Use a private window to be two people at once.', 'info');
+      navigate(homeFor(user.role), { replace: true });
+    }
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!session) return;
     realtime.start();

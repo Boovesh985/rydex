@@ -162,6 +162,7 @@ class RideEventFlowTests extends IntegrationTest {
 
         // the assigned driver can now run the trip; completion goes back out on Kafka
         String driver = token(driverAuth);
+        driverAtPickup(b.rideId());
         assertThat(api().post("/api/rides/" + b.rideId() + "/arrived", driver, null).getStatusCode().value()).isEqualTo(200);
         assertThat(api().post("/api/rides/" + b.rideId() + "/start", driver, Map.of("otp", b.otp())).getStatusCode().value()).isEqualTo(200);
         assertThat(api().post("/api/rides/" + b.rideId() + "/complete", driver, null).getStatusCode().value()).isEqualTo(200);

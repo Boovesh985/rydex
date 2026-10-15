@@ -95,6 +95,14 @@ class LiveTrackingTests extends IntegrationTest {
             assertThat(rest.getBody().path("phase").asString()).isEqualTo("TO_PICKUP");
             assertThat(api().get("/api/tracking/rides/" + ride.id() + "/location", TestTokens.rider(UUID.randomUUID()))
                     .getStatusCode().value()).isEqualTo(404);
+
+            // halfway there before the next OSRM refresh: the ETA follows the car, not the clock
+            Thread.sleep(600);
+            driver.send("/app/driver.location", at(13.0863, 80.2707)); // ~400 m from the pickup
+            JsonNode halfway = next(live);
+            assertThat(halfway.path("etaEstimated").asBoolean()).isFalse();
+            assertThat(halfway.path("etaS").asInt()).isBetween(45, 55);
+            assertThat(halfway.path("distanceM").asInt()).isBetween(380, 420);
         }
     }
 

@@ -60,6 +60,7 @@ class AdminStatsTests extends IntegrationTest {
         String driver = token(driverAuth);
         UUID done = book(rider1);
         rideService.assignDriver(done, userId(driverAuth), "SYSTEM:test");
+        driverAtPickup(done);
         api().post("/api/rides/" + done + "/arrived", driver, null);
         String otp = api().get("/api/rides/" + done, rider1).getBody().path("otp").asString();
         api().post("/api/rides/" + done + "/start", driver, Map.of("otp", otp));

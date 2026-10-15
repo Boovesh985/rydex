@@ -13,12 +13,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param sweepInterval    how often the unmatched-ride sweeper runs
  * @param cancellationFees INR a rider pays for cancelling after the driver arrived, per ride type
  *                         (a type without an entry cancels free)
+ * @param arrivalRadiusM   how close to the pickup (metres) a driver's last position must be to mark arrival
  */
 @ConfigurationProperties("rydex.rides")
 public record RideProperties(
         @DefaultValue("5m") Duration unmatchedTimeout,
         @DefaultValue("30s") Duration sweepInterval,
-        Map<RideType, BigDecimal> cancellationFees) {
+        Map<RideType, BigDecimal> cancellationFees,
+        @DefaultValue("250") int arrivalRadiusM) {
 
     public RideProperties {
         cancellationFees = cancellationFees == null ? Map.of() : Map.copyOf(cancellationFees);

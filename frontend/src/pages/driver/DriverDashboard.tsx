@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigation, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { driversApi, placesApi, ridesApi } from '../../api/endpoints';
+import { driversApi, ridesApi } from '../../api/endpoints';
 import { ApiError, errorMessage } from '../../api/http';
 import type { DriverProfile, Offer, OfferMessage, Ride } from '../../api/types';
 import { RealisticButton, RealisticHud, TripProgress } from '../../components/Realistic';
@@ -9,9 +9,9 @@ import { toast } from '../../components/toastStore';
 import { Button, ErrorNote, Eyebrow, Meter, Plate, Sheet, Spinner } from '../../components/ui';
 import { config } from '../../config';
 import { distance, inr, rideTypeLabel, shortAddress } from '../../lib/format';
-import { haversine, PathIndex, type LatLng } from '../../lib/geo';
-import { decodePolyline } from '../../lib/polyline';
+import { haversine, type LatLng } from '../../lib/geo';
 import { AnimatedCar, BaseMap, DropPin, FitTo, MapClicks, PickupPin, RouteLine } from '../../map/MapView';
+import { useFollowedRoute, type Leg } from '../../map/useFollowedRoute';
 import { useRealistic } from '../../map/useRealistic';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
 import { realtime } from '../../realtime/stomp';
@@ -20,6 +20,8 @@ import { OfferModal } from './OfferModal';
 import { useGpsPosition, useLocationReporter, useSimulatedPosition, type Position } from './usePosition';
 
 const SIM_KEY = 'rydex.simulate';
+/** ride-service accepts "I've arrived" only this close to the pickup (rydex.rides.arrival-radius-m) */
+const ARRIVAL_RADIUS_M = 250;
 const readSim = () => {
   try {
     return config.simulator && localStorage.getItem(SIM_KEY) === 'on';
@@ -88,39 +90,41 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
   const rx = useRealistic(online);
 
   const rideId = profile.currentRideId;
-  const ride = useQuery({ queryKey: ['ride', rideId], queryFn: () => ridesApi.get(rideId!), enabled: !!rideId });
+  const ride = useQuery({
+    queryKey: ['ride', rideId],
+    queryFn: () => ridesApi.get(rideId!),
+    enabled: !!rideId,
+    // notifications refresh it; this catches a missed one (a rider who cancelled while we were offline)
+    refetchInterval: 15_000,
+  });
   const r = ride.data && ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'].includes(ride.data.status) ? ride.data : null;
   const target = r?.status === 'DRIVER_ASSIGNED' ? r.pickup : r?.status === 'IN_PROGRESS' ? r.drop : null;
-  const leg = r ? `${r.id}:${r.status}` : null;
 
   // --- where the car is
   const last: LatLng | null = profile.lastLocation ? [profile.lastLocation.lat, profile.lastLocation.lng] : null;
-  const [legStart, setLegStart] = useState<{ leg: string; from: LatLng } | null>(null);
   const gps = useGpsPosition(!simulate && online);
-
-  const route = useQuery({
-    queryKey: ['drive-route', legStart?.leg],
-    queryFn: () => placesApi.route({ lat: legStart!.from[0], lng: legStart!.from[1] }, target!),
-    enabled: !!legStart && !!target && legStart.leg === leg,
-    staleTime: Infinity,
-  });
-  const routePoints = useMemo<LatLng[] | null>(() => {
-    if (!legStart || !target || legStart.leg !== leg || !route.data) return null;
-    return route.data.polyline ? decodePolyline(route.data.polyline) : [legStart.from, [target.lat, target.lng]];
-  }, [route.data, legStart, target, leg]);
-  const pathIndex = useMemo(() => (routePoints && routePoints.length > 1 ? new PathIndex(routePoints) : null), [routePoints]);
-
-  const sim = useSimulatedPosition(last, simulate ? routePoints : null, speedKmh);
+  const [simPos, setSimPos] = useState<Position | null>(null);
   const lastLat = last?.[0];
   const lastLng = last?.[1];
   const pos = useMemo<Position | null>(
     () =>
-      simulate ? sim.pos : (gps.pos ?? (lastLat != null && lastLng != null ? { lat: lastLat, lng: lastLng, heading: null, speed: null } : null)),
-    [simulate, sim.pos, gps.pos, lastLat, lastLng],
+      simulate ? simPos : (gps.pos ?? (lastLat != null && lastLng != null ? { lat: lastLat, lng: lastLng, heading: null, speed: null } : null)),
+    [simulate, simPos, gps.pos, lastLat, lastLng],
   );
 
-  // a new leg (to the pickup, then to the drop) starts where the car is now
-  if (leg && target && pos && legStart?.leg !== leg) setLegStart({ leg, from: [pos.lat, pos.lng] });
+  // the road: from where the car is to the pickup, then the rider's route from the pickup to the drop
+  // (the same one the rider sees); a new route is planned when the car leaves it
+  const leg = useMemo<Leg | null>(() => {
+    if (!r || !target) return null;
+    return r.status === 'DRIVER_ASSIGNED'
+      ? { key: `${r.id}:to-pickup`, from: pos ? [pos.lat, pos.lng] : null, to: [r.pickup.lat, r.pickup.lng] }
+      : { key: `${r.id}:trip`, from: [r.pickup.lat, r.pickup.lng], to: [r.drop.lat, r.drop.lng] };
+  }, [r, target, pos]);
+  const road = useFollowedRoute(leg, pos);
+  const routePoints = road.points;
+
+  const sim = useSimulatedPosition(last, simulate ? routePoints : null, speedKmh);
+  if (simulate && sim.pos !== simPos) setSimPos(sim.pos);
 
   useLocationReporter(pos, online);
 
@@ -194,9 +198,11 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
     return pts;
   }, [leg, hasPos]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const progress = pathIndex && pos && r?.status !== 'DRIVER_ARRIVED' && pathIndex.length > 0 ? pathIndex.project([pos.lat, pos.lng]).along / pathIndex.length : null;
+  const progress = r?.status === 'IN_PROGRESS' ? road.legProgress : null;
   const legEnd = r ? (r.status === 'IN_PROGRESS' ? r.drop : r.pickup) : null;
-  const away = legEnd && pos ? haversine([pos.lat, pos.lng], [legEnd.lat, legEnd.lng]) : null;
+  // road distance left when the car is on the route, else as the crow flies
+  const away = legEnd && pos ? (road.remaining ?? haversine([pos.lat, pos.lng], [legEnd.lat, legEnd.lng])) : null;
+  const toPickup = r && pos ? haversine([pos.lat, pos.lng], [r.pickup.lat, r.pickup.lng]) : null;
 
   return (
     <>
@@ -204,7 +210,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
         {simulate && !r && <MapClicks onClick={sim.moveTo} />}
         {r && r.status !== 'IN_PROGRESS' && <PickupPin at={[r.pickup.lat, r.pickup.lng]} />}
         {r && r.status === 'IN_PROGRESS' && <DropPin at={[r.drop.lat, r.drop.lng]} />}
-        {routePoints && <RouteLine polyline={route.data?.polyline} fallback={routePoints} progress={progress} />}
+        {routePoints && <RouteLine polyline={road.polyline} fallback={routePoints} progress={road.lineProgress} />}
         {pos && (
           <AnimatedCar
             lat={pos.lat}
@@ -244,7 +250,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
               {r.status === 'IN_PROGRESS' && progress != null && (
                 <TripProgress progress={progress} from={shortAddress(r.pickup.address)} to={shortAddress(r.drop.address)} />
               )}
-              <TripActions ride={r} compact />
+              <TripActions key={`${r.id}:${r.status}`} ride={r} pos={pos} toPickup={toPickup} compact />
             </div>
           ) : (
             <p className="text-sm">
@@ -260,7 +266,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
             {!simulate && online && gps.error && <ErrorNote>{gps.error}</ErrorNote>}
 
             {r ? (
-              <TripPanel ride={r} pos={pos} away={away} progress={progress} />
+              <TripPanel ride={r} pos={pos} away={away} toPickup={toPickup} progress={progress} />
             ) : (
               <>
                 {online ? (
@@ -326,7 +332,7 @@ function StatusBar({ profile, online, busy, onToggle }: { profile: DriverProfile
   );
 }
 
-function TripPanel({ ride, pos, away, progress }: { ride: Ride; pos: Position | null; away: number | null; progress: number | null }) {
+function TripPanel({ ride, pos, away, toPickup, progress }: { ride: Ride; pos: Position | null; away: number | null; toPickup: number | null; progress: number | null }) {
   const target = ride.status === 'IN_PROGRESS' ? ride.drop : ride.pickup;
   const label = ride.status === 'DRIVER_ASSIGNED' ? 'To pickup' : ride.status === 'DRIVER_ARRIVED' ? 'At pickup' : 'To drop';
 
@@ -361,37 +367,67 @@ function TripPanel({ ride, pos, away, progress }: { ride: Ride; pos: Position | 
       >
         <Navigation className="size-4" aria-hidden /> Turn-by-turn directions
       </a>
-      <TripActions ride={ride} />
+      <TripActions key={`${ride.id}:${ride.status}`} ride={ride} pos={pos} toPickup={toPickup} />
     </div>
   );
 }
 
-/** The trip's next step (arrived, start with the PIN, complete), and cancelling, which asks first. */
-function TripActions({ ride, compact = false }: { ride: Ride; compact?: boolean }) {
+/**
+ * The trip's next step (arrived, start with the rider's PIN, complete), and cancelling, which asks
+ * first. Keyed by ride and status, so a step's error never outlives the step. "I've arrived" only
+ * works near the pickup (ride-service checks it too, against the last position it was sent).
+ */
+function TripActions({ ride, pos, toPickup, compact = false }: { ride: Ride; pos: Position | null; toPickup: number | null; compact?: boolean }) {
   const queryClient = useQueryClient();
   const [otp, setOtp] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const done = (updated: Ride) => {
-    queryClient.setQueryData(['ride', ride.id], updated);
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['ride', ride.id] });
     void queryClient.invalidateQueries({ queryKey: ['driver', 'me'] });
     void queryClient.invalidateQueries({ queryKey: ['rides'] });
   };
-  const arrived = useMutation({ mutationFn: () => ridesApi.arrived(ride.id), onSuccess: done });
-  const start = useMutation({ mutationFn: () => ridesApi.start(ride.id, otp), onSuccess: done });
+  const done = (updated: Ride) => {
+    queryClient.setQueryData(['ride', ride.id], updated);
+    refresh();
+  };
+  // this screen was behind (the ride moved on, or the rider cancelled): catch up instead of showing an error
+  const onError = (e: Error) => {
+    if (!isStale(e)) return;
+    toast('Ride updated', 'This ride had already moved on, so your screen has been refreshed.', 'info');
+    refresh();
+  };
+  const arrived = useMutation({
+    mutationFn: async () => {
+      // the server checks the last position it has: send this one first
+      if (pos) await reportNow(pos);
+      return ridesApi.arrived(ride.id);
+    },
+    onSuccess: done,
+    onError,
+  });
+  const start = useMutation({ mutationFn: () => ridesApi.start(ride.id, otp), onSuccess: done, onError });
   // the "Trip completed" notification comes from the server
-  const complete = useMutation({ mutationFn: () => ridesApi.complete(ride.id), onSuccess: done });
-  const cancel = useMutation({ mutationFn: () => ridesApi.cancel(ride.id, 'Cancelled by driver'), onSuccess: done });
-  const error = arrived.error ?? start.error ?? complete.error ?? cancel.error;
+  const complete = useMutation({ mutationFn: () => ridesApi.complete(ride.id), onSuccess: done, onError });
+  const cancel = useMutation({ mutationFn: () => ridesApi.cancel(ride.id, 'Cancelled by driver'), onSuccess: done, onError });
+  const error = [arrived.error, start.error, complete.error, cancel.error].find((e) => e && !isStale(e));
   const otpId = compact ? 'otp-hud' : 'otp';
+  const atPickup = toPickup != null && toPickup <= ARRIVAL_RADIUS_M;
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-4'}>
       <ErrorNote>{error && errorMessage(error)}</ErrorNote>
 
       {ride.status === 'DRIVER_ASSIGNED' && (
-        <Button block busy={arrived.isPending} onClick={() => arrived.mutate()}>
-          I've arrived at pickup
-        </Button>
+        <div className="space-y-1.5">
+          <Button block busy={arrived.isPending} disabled={!atPickup} onClick={() => arrived.mutate()}>
+            I've arrived at pickup
+          </Button>
+          {!atPickup && (
+            <p className="text-center text-xs text-slate" role="status">
+              {toPickup == null ? 'Waiting for your location…' : `Available at the pickup: ${distance(toPickup)} to go`}
+            </p>
+          )}
+        </div>
       )}
       {ride.status === 'DRIVER_ARRIVED' && (
         <form
@@ -402,7 +438,7 @@ function TripActions({ ride, compact = false }: { ride: Ride; compact?: boolean 
           }}
         >
           <label className="block text-sm font-bold" htmlFor={otpId}>
-            Ask the rider for their 4-digit PIN
+            Ask the rider for the 4-digit PIN on their screen
           </label>
           <div className="flex gap-2">
             <input
@@ -413,7 +449,10 @@ function TripActions({ ride, compact = false }: { ride: Ride; compact?: boolean 
               maxLength={4}
               required
               value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+              onChange={(e) => {
+                setOtp(e.target.value.replace(/\D/g, ''));
+                if (start.isError) start.reset();
+              }}
               className="h-12 w-32 rounded-xl border border-mist bg-paper px-3 text-center font-mono text-2xl font-bold tracking-[0.4em] focus:border-ink focus:outline-none"
             />
             <Button type="submit" className="flex-1" busy={start.isPending} disabled={otp.length !== 4}>
@@ -447,6 +486,20 @@ function TripActions({ ride, compact = false }: { ride: Ride; compact?: boolean 
         ))}
     </div>
   );
+}
+
+const isStale = (e: Error) => e instanceof ApiError && (e.status === 404 || (e.status === 409 && e.title === 'Illegal ride state transition'));
+
+/** Sends the car's position now over REST (stored before it returns); once more if it was too soon after the last one. */
+async function reportNow(p: Position) {
+  const body = { lat: Number(p.lat.toFixed(6)), lng: Number(p.lng.toFixed(6)) };
+  try {
+    await driversApi.reportLocation(body);
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 429)) return;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await driversApi.reportLocation(body).catch(() => undefined);
+  }
 }
 
 /** Today's completed trips and their fares (this device's calendar day). */

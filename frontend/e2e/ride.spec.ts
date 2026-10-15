@@ -71,7 +71,7 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
   const pin = pinLabel!.replace(/\D/g, '');
   expect(pin).toHaveLength(4);
 
-  const near = { lat: PICKUP.lat + 0.002, lng: PICKUP.lng, heading: 180, speed: 8 };
+  const near = { lat: PICKUP.lat + 0.001, lng: PICKUP.lng, heading: 180, speed: 8 };
   expect((await request.post('/api/drivers/me/location', { headers: auth(driver.token), data: near })).ok()).toBe(true);
 
   // arrive, start with the rider's PIN, complete

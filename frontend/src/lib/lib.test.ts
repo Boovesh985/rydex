@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { distance, inr, minutes, shortAddress } from './format';
-import { along, bearing, haversine, lerpHeading, metersPerPixel, PathIndex, pathLength, type LatLng } from './geo';
+import { along, bearing, haversine, lerpHeading, matchOnRoute, metersPerPixel, PathIndex, pathLength, type LatLng, type RouteMatch } from './geo';
 import { decodePolyline, encodePolyline } from './polyline';
 
 describe('polyline', () => {
@@ -98,5 +98,50 @@ describe('PathIndex', () => {
   it('gives a metre-per-pixel scale that halves with every zoom level', () => {
     expect(metersPerPixel(17, 0)).toBeCloseTo(0.597, 2);
     expect(metersPerPixel(18, 13) / metersPerPixel(17, 13)).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('matchOnRoute', () => {
+  // up one side of a divided road for 1 km, a U-turn, and back down the other side 20 m away
+  const lane = 20 / 111_320;
+  const route = new PathIndex([
+    [13.0, 80.2],
+    [13.009, 80.2],
+    [13.009, 80.2 + lane],
+    [13.0, 80.2 + lane],
+  ]);
+  const drive = (fixes: LatLng[]) => {
+    let m: RouteMatch | null = null;
+    const along: number[] = [];
+    for (const f of fixes) {
+      m = matchOnRoute(route, f, m);
+      along.push(Math.round(m.along));
+    }
+    return { m: m!, along };
+  };
+
+  it('keeps a car on the way back on the way back, even where the two passes are side by side', () => {
+    // past the U-turn, heading south: each fix is 10 m from the northbound side too
+    const { along } = drive([
+      [13.0, 80.2],
+      [13.008, 80.2],
+      [13.009, 80.2 + lane / 2],
+      [13.006, 80.2 + lane * 0.5],
+      [13.003, 80.2 + lane * 0.5],
+    ]);
+    for (let i = 1; i < along.length; i++) expect(along[i]).toBeGreaterThanOrEqual(along[i - 1]);
+    expect(along.at(-1)).toBeGreaterThan(1300);
+  });
+
+  it('never goes backwards, and holds its place while the car is off the route', () => {
+    const { m, along } = drive([
+      [13.005, 80.2],
+      [13.004, 80.2], // a fix a little behind (GPS noise)
+      [13.005, 80.21], // a kilometre off to the east
+    ]);
+    expect(along[1]).toBe(along[0]);
+    expect(m.onRoute).toBe(false);
+    expect(m.along).toBeCloseTo(along[0], 0);
+    expect(m.offset).toBeGreaterThan(900);
   });
 });

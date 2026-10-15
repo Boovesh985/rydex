@@ -50,6 +50,7 @@ class CancellationFeeTests extends IntegrationTest {
                 Map.of("Idempotency-Key", UUID.randomUUID().toString()));
         UUID rideId = UUID.fromString(res.getBody().path("id").asString());
         rideService.assignDriver(rideId, userId(driverAuth), "SYSTEM:test");
+        driverAtPickup(rideId);
         return new Trip(rideId, rider, token(driverAuth));
     }
 

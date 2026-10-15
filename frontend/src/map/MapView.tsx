@@ -315,6 +315,7 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
   const shown = useRef<Pose | null>(null);
   const marker = useRef<maplibregl.Marker | null>(null);
   const camBearing = useRef<number | null>(null);
+  const shownAlong = useRef<{ index: PathIndex; along: number } | null>(null);
   const following = useRef(false);
   const live = useRef({ cars, type, speed, realistic, follow, onFollowLost });
   useEffect(() => {
@@ -403,7 +404,9 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
   useEffect(() => {
     const target: LatLng = [lat, lng];
     const from = shown.current ?? { lat, lng, heading: heading ?? 0 };
-    const position = planGlide(from, target, heading, index);
+    const hint = shownAlong.current?.index === index ? shownAlong.current.along : null;
+    const { position, endAlong } = planGlide(from, target, heading, index, hint);
+    shownAlong.current = index && endAlong != null ? { index, along: endAlong } : null;
     const reduced = reducedMotion();
     const start = performance.now();
     let frame = 0;
@@ -429,25 +432,37 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
   return null;
 }
 
-/** Where the car is at t (0..1) between its shown pose and a new fix. */
-function planGlide(from: Pose, to: LatLng, heading: number | null, index: PathIndex | null): (t: number) => Pose {
+/**
+ * Where the car is at t (0..1) between its shown pose and a new fix: along the road when both are
+ * on the route, looking only ahead of where the car is (`hint`, metres along), so a route passing
+ * the same spot twice cannot send it back to the first pass. `endAlong` is where it ends up.
+ */
+function planGlide(from: Pose, to: LatLng, heading: number | null, index: PathIndex | null, hint: number | null): { position: (t: number) => Pose; endAlong: number | null } {
   const start: LatLng = [from.lat, from.lng];
   const dist = haversine(start, to);
-  if (index && dist > 1) {
-    const a = index.project(start);
-    const b = index.project(to);
+  if (index) {
+    let a = hint != null ? index.project(start, { from: hint - 60, to: hint + 60 }) : index.project(start);
+    if (a.offset >= 40 && hint != null) a = index.project(start);
+    const b = index.project(to, { from: a.along - 20, to: a.along + dist * 2.5 + 300 });
     const forward = b.along - a.along;
-    if (a.offset < 40 && b.offset < 40 && forward > -3 && forward < dist * 1.8 + 40) {
-      return (t) => {
-        const p = index.at(a.along + forward * t);
-        return { lat: p.point[0], lng: p.point[1], heading: forward > 0.5 ? p.heading : from.heading };
+    if (a.offset < 40 && b.offset < 40 && forward > -3 && forward < dist * 2.5 + 300) {
+      if (dist <= 1) return { position: () => from, endAlong: a.along };
+      return {
+        position: (t) => {
+          const p = index.at(a.along + forward * t);
+          return { lat: p.point[0], lng: p.point[1], heading: forward > 0.5 ? p.heading : from.heading };
+        },
+        endAlong: b.along,
       };
     }
   }
   const finalHeading = heading ?? (dist > 3 ? bearing(start, to) : from.heading);
-  return (t) => {
-    const [la, ln] = lerp(start, to, t);
-    return { lat: la, lng: ln, heading: lerpHeading(from.heading, finalHeading, Math.min(1, t * 3)) };
+  return {
+    position: (t) => {
+      const [la, ln] = lerp(start, to, t);
+      return { lat: la, lng: ln, heading: lerpHeading(from.heading, finalHeading, Math.min(1, t * 3)) };
+    },
+    endAlong: null,
   };
 }
 

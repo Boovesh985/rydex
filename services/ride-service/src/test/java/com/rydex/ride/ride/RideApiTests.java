@@ -186,11 +186,21 @@ class RideApiTests extends IntegrationTest {
         // OTP cannot be used before the driver has arrived
         assertThat(api().post("/api/rides/" + rideId + "/start", driver, Map.of("otp", otp))
                 .getStatusCode().value()).isEqualTo(409);
+        // not before the car is at the pickup, and not without knowing where the car is
+        var unknown = api().post("/api/rides/" + rideId + "/arrived", driver, null);
+        assertThat(unknown.getStatusCode().value()).isEqualTo(409);
+        assertThat(unknown.getBody().path("detail").asString()).contains("share your location");
+        driverAt(userId(driverAuth), 13.0500, 80.2500);
+        var tooFar = api().post("/api/rides/" + rideId + "/arrived", driver, null);
+        assertThat(tooFar.getStatusCode().value()).isEqualTo(409);
+        assertThat(tooFar.getBody().path("detail").asString()).contains("from the pickup");
+        driverAtPickup(rideId);
         assertThat(api().post("/api/rides/" + rideId + "/arrived", driver, null).getStatusCode().value())
                 .isEqualTo(200);
         String wrongOtp = otp.equals("0000") ? "1111" : "0000";
-        assertThat(api().post("/api/rides/" + rideId + "/start", driver, Map.of("otp", wrongOtp))
-                .getStatusCode().value()).isEqualTo(422);
+        var wrong = api().post("/api/rides/" + rideId + "/start", driver, Map.of("otp", wrongOtp));
+        assertThat(wrong.getStatusCode().value()).isEqualTo(422);
+        assertThat(wrong.getBody().path("detail").asString()).contains("Wrong PIN").contains("4 tries left");
         assertThat(api().post("/api/rides/" + rideId + "/start", driver, Map.of("otp", otp))
                 .getBody().path("status").asString()).isEqualTo("IN_PROGRESS");
         var completed = api().post("/api/rides/" + rideId + "/complete", driver, null);
@@ -229,6 +239,7 @@ class RideApiTests extends IntegrationTest {
         String driver = token(driverAuth);
         UUID rideId = book(rider);
         rideService.assignDriver(rideId, userId(driverAuth), "SYSTEM:test");
+        driverAtPickup(rideId);
         api().post("/api/rides/" + rideId + "/arrived", driver, null);
         String wrong = otpService.otpFor(rideId).equals("0000") ? "1111" : "0000";
 
