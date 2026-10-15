@@ -3,7 +3,7 @@
 Uber-style ride hailing with live driver tracking and AI ride suggestions, built on free tiers only.
 React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafka · WebSockets · FastAPI.
 
-> 🚧 Work in progress. Phases 0–6 (scaffold, ride-service, driver-service, Kafka event flow, live tracking over WebSockets, payments, web app and driver simulator) are done. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
+> 🚧 Work in progress. Phases 0–6 (scaffold, ride-service, driver-service, Kafka event flow, live tracking over WebSockets, payments, web app and driver simulator) are done, followed by a security audit (encrypted personal data, Argon2id passwords, account lockout) and a realistic 3D tracking mode. The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
 
 ## Quick start
 
@@ -43,7 +43,13 @@ cd simulator; pip install -r requirements.txt; python simulate.py --drivers 20 -
 a ride type and book. With the simulator running, a nearby simulated driver accepts, drives to you, starts the trip
 with your PIN and drives you to the drop; the car moves live on your map. To drive yourself instead, sign in as a
 driver in a second browser (or a private window), switch on **Simulate driving** and go online. Sign in as
-`admin@rydex.dev` for the operations map: live drivers, the geohash grid matching uses, demand and KPIs.
+`admin@rydex.dev` for the operations map: live drivers, the geohash grid matching uses, demand and KPIs, and every
+ride in flight (open one to watch it live).
+
+**Realistic 3D.** On a live ride, the driver dashboard, a trip page or the operations map, press **Realistic 3D**:
+the map tilts, buildings rise, the car becomes a 3D model and the camera rides behind it, with a speedometer and the
+ETA overhead. The sun/moon button switches to the night city (headlights on). Maps are MapLibre vector maps on free
+OpenFreeMap tiles; the 3D cars are drawn with three.js (ADR 15).
 
 The web app talks to one origin: the Vite dev server forwards each `/api` prefix and `/ws` to its service (ADR 13).
 The simulator signs in at most 15 drivers a minute, so 50 drivers take about 3.5 minutes to come online; it derives
@@ -87,6 +93,20 @@ cd frontend && npm install && npm run dev                     # fifth: http://lo
 cd simulator && pip install -r requirements.txt && python simulate.py --drivers 20  # sixth
 ```
 
+**Security (ADR 14).** Emails and phone numbers are encrypted in the database (AES-256-GCM; sign-in finds accounts
+by a keyed hash), passwords are hashed with Argon2id, and ten wrong passwords lock an account for 15 minutes.
+Locally the service uses published development keys and says so in its log. A deployment sets its own and
+`RYDEX_STRICT_SECRETS=true`, which refuses to start with any development secret:
+
+| Variable | What | Generate with |
+|---|---|---|
+| `PII_DATA_KEY`, `PII_INDEX_KEY` | personal-data encryption and lookup keys (different) | `openssl rand -base64 32` |
+| `OTP_SECRET` | ride PIN secret, 32+ characters | `openssl rand -base64 32` |
+| `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION` | token signing key pair | `infra/scripts/gen-jwt-keys.sh` |
+| `API_DOCS_ENABLED` | `false` hides Swagger UI on a public deployment | |
+
+Back up `PII_DATA_KEY` with the database: without it the stored emails and phone numbers cannot be read.
+
 Demo accounts (seeded): `admin@rydex.dev`, `rider1..5@rydex.dev`, `driver01..50@rydex.dev`, all with password `Rydex@123`.
 Drivers 01–30 drive ECONOMY, 31–42 COMFORT and 43–50 XL. All of them start offline.
 
@@ -108,7 +128,7 @@ libs/common-events/   shared event envelope, event types, topic names, geohash, 
 libs/messaging/       outbox relay, idempotent consumers, retries + dead-letter topics (@EnableMessaging)
 libs/presence/        driver presence in Redis (Lua scripts), shared by driver- and tracking-service
 services/             ride, driver, tracking, payment (Spring Boot)
-frontend/             React web app: rider, driver and admin screens (Vite, Tailwind, Leaflet, STOMP)
+frontend/             React web app: rider, driver and admin screens (Vite, Tailwind, MapLibre + three.js, STOMP)
 simulator/            fake drivers for demos and load (Python asyncio)
 contracts/            JSON Schemas for Kafka events (ride, payment, driver location), the WebSocket (STOMP) API
 infra/                docker compose, PostGIS image, Kafka topic script
@@ -116,4 +136,4 @@ docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15).

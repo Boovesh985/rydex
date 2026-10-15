@@ -554,6 +554,20 @@ if ($page) {
 
 Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
 
+# ---------------------------------------------------------------- audit (ADR 0014, 0015)
+Section "Security audit - accounts, trips"
+$mixedCase = Api POST "$RideUrl/api/auth/login" $null @{ email = "Rider1@RYDEX.dev"; password = "Rydex@123" }
+Check "sign-in finds the encrypted account by any email casing" ($mixedCase.Status -eq 200) "HTTP $($mixedCase.Status)"
+$weak = Api POST "$RideUrl/api/auth/register" $null @{ name = "Weak"; email = "weak-$([guid]::NewGuid())@test.rydex.dev"; password = "onlyletters"; role = "RIDER" }
+Check "a password without a digit is refused" ($weak.Status -eq 400) "HTTP $($weak.Status)"
+$lockEmail = "lockout-$([guid]::NewGuid())@test.rydex.dev"
+$lockCodes = @(1..11 | ForEach-Object { (Api POST "$RideUrl/api/auth/login" $null @{ email = $lockEmail; password = "Wrong-pass-$_" }).Status })
+Check "ten wrong passwords lock the account (429)" ($lockCodes[9] -eq 401 -and $lockCodes[10] -eq 429) "last two: $($lockCodes[9]), $($lockCodes[10])"
+$inFlight = Api GET "$RideUrl/api/rides?mine=false&active=true&size=100" $admin
+Check "admins list the rides in flight" ($inFlight.Status -eq 200 -and @($inFlight.Body.items | Where-Object { $_.status -in 'COMPLETED', 'CANCELLED', 'NO_DRIVER_FOUND' }).Count -eq 0) "$($inFlight.Body.total) in flight"
+$driverTrip = Api GET "$TrackingUrl/api/tracking/rides/$rideId/path" $driverToken
+Check "the driver reads their trip's driven path" ($driverTrip.Status -eq 200) "$(@($driverTrip.Body).Count) points"
+
 # ---------------------------------------------------------------- summary
 Write-Host ""
 $color = if ($script:failed -eq 0) { "Green" } else { "Red" }
