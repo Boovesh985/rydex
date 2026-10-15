@@ -9,8 +9,13 @@ import type { RideType } from '../api/types';
 import { config } from '../config';
 import { bearing, haversine, lerp, lerpHeading, PathIndex, type LatLng } from '../lib/geo';
 import { decodePolyline } from '../lib/polyline';
+import { Atmosphere } from './Atmosphere';
 import type { CarLayer, CarPose } from './car3d';
+import { useMapPrefs, useNight } from './mapPrefs';
+import { MapPrefsControl } from './MapPrefsControl';
+import type { SceneryLayer } from './scenery';
 import { applyLook, BUILDINGS_3D, ROUTE_COLORS, STYLE_URL, type Look } from './theme';
+import { TrafficLayer } from './TrafficLayer';
 
 /*
  * The maps of every screen, on MapLibre GL (vector tiles, WebGL). The same map switches between the
@@ -63,15 +68,20 @@ interface BaseMapProps {
   className?: string;
   /** 3D buildings, sky, pitched camera and 3D cars */
   realistic?: boolean;
+  /** the night look; by default the viewer's preference (auto by the clock) */
   night?: boolean;
 }
 
 /** Full-bleed map; zoom/compass buttons sit bottom-right, clear of the sheets. */
-export function BaseMap({ center = [config.center.lat, config.center.lng], zoom = 14, children, className, realistic = false, night = false }: BaseMapProps) {
+export function BaseMap({ center = [config.center.lat, config.center.lng], zoom = 14, children, className, realistic = false, night: nightProp }: BaseMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MlMap | null>(null);
   const [failed, setFailed] = useState(() => !supportsWebGL());
   const [cars, setCars] = useState<CarLayer | null>(null);
+  const [scenery, setScenery] = useState<SceneryLayer | null>(null);
+  const preferredNight = useNight();
+  const night = nightProp ?? preferredNight;
+  const traffic = useMapPrefs((s) => s.traffic);
   const followerRef = useRef(false);
   const look = useRef<Look | undefined>(undefined);
 
@@ -84,7 +94,8 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
         style: STYLE_URL,
         center: [center[1], center[0]],
         zoom,
-        maxPitch: 72,
+        // realistic mode's chase camera tilts far enough to see the sky
+        maxPitch: 80,
         attributionControl: { compact: true },
         // labels appear at once: fades need animation frames, which background tabs pause
         fadeDuration: 0,
@@ -116,7 +127,9 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
     look.current = next;
     if (previous && previous.realistic !== realistic && !followerRef.current) {
       const duration = reducedMotion() ? 0 : 1400;
-      if (realistic) map.easeTo({ pitch: 58, bearing: map.getBearing() || -18, zoom: Math.max(map.getZoom(), 15.4), duration });
+      // a game-like view: low over the street, the centre pushed down so the horizon and sky show
+      const top = Math.round(map.getContainer().clientHeight * 0.3);
+      if (realistic) map.easeTo({ pitch: 72, bearing: map.getBearing() || -18, zoom: Math.max(map.getZoom(), 15.6), padding: { top, bottom: 0, left: 0, right: 0 }, duration });
       else map.easeTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: duration * 0.7 });
     }
   }, [map, realistic, night]);
@@ -141,6 +154,27 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
 
   useEffect(() => cars?.setNight(night), [cars, night]);
 
+  // trees and street lights, also only in realistic mode
+  useEffect(() => {
+    if (!map || !realistic) return;
+    let layer: SceneryLayer | null = null;
+    let cancelled = false;
+    void import('./scenery').then(({ createSceneryLayer }) => {
+      if (cancelled || !map.getStyle()) return;
+      layer = createSceneryLayer();
+      // under the labels, with the buildings (they share the depth buffer, so walls hide trees)
+      map.addLayer(layer.layer, map.getStyle().layers?.find((l) => l.type === 'symbol')?.id);
+      setScenery(layer);
+    });
+    return () => {
+      cancelled = true;
+      if (layer && map.getStyle() && map.getLayer(layer.layer.id)) map.removeLayer(layer.layer.id);
+      setScenery(null);
+    };
+  }, [map, realistic]);
+
+  useEffect(() => scenery?.setNight(night), [scenery, night]);
+
   const state = useMemo(() => (map ? { map, realistic, night, cars: realistic ? cars : null, followerRef } : null), [map, realistic, night, cars]);
 
   return (
@@ -151,6 +185,9 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
           This browser cannot show the map (WebGL is turned off). Everything else still works.
         </div>
       )}
+      {map && <MapPrefsControl map={map} />}
+      {map && traffic && <TrafficLayer map={map} night={night} />}
+      {map && realistic && <Atmosphere map={map} night={night} />}
       {state && <MapContext.Provider value={state}>{children}</MapContext.Provider>}
     </div>
   );
@@ -174,7 +211,7 @@ export function FitTo({ points, maxZoom = 16, refit = 0 }: { points: LatLng[]; m
     map.easeTo({
       center: camera.center,
       zoom: realistic ? (camera.zoom ?? map.getZoom()) - 0.2 : camera.zoom,
-      pitch: realistic ? 52 : 0,
+      pitch: realistic ? 60 : 0,
       bearing: realistic ? map.getBearing() : 0,
       // instant in 2D: a GeoJSON source added during a camera animation can fail to draw (MapLibre load race)
       duration: realistic && !reducedMotion() ? 800 : 0,
@@ -372,7 +409,8 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
     map.easeTo({
       center: [pose.lng, pose.lat],
       zoom: 17.4,
-      pitch: 64,
+      // a chase camera: low behind the car, with the sky ahead
+      pitch: 74,
       bearing: pose.heading,
       padding: { top: Math.round(h * 0.42), bottom: 30, left: 0, right: 0 },
       duration: reducedMotion() ? 0 : 1600,
@@ -530,13 +568,16 @@ const emptyLine: FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 // ------------------------------------------------------------------ admin layers
 
+export type CarDuty = 'free' | 'pickup' | 'trip';
+
 export interface FleetCar {
   id: string;
   lat: number;
   lng: number;
   heading: number | null;
   type: RideType | null;
-  onTrip: boolean;
+  /** free, driving to a rider's pickup, or carrying a rider */
+  duty: CarDuty;
   label: string;
 }
 
@@ -580,12 +621,12 @@ export function Fleet({ cars: fleet, glideMs = 2800 }: { cars: FleetCar[]; glide
     }
     if (!layer) {
       for (const car of fleet) {
-        const look = `${car.type}:${car.onTrip}`;
+        const look = `${car.type}:${car.duty}`;
         const existing = markers.current.get(car.id);
         if (existing && existing.look === look) continue;
         existing?.marker.remove();
         const el = carElement(car.type, 28, car.label);
-        if (car.onTrip) el.style.opacity = '0.55';
+        el.classList.add(`rx-car-${car.duty}`);
         const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map' }).setLngLat([car.lng, car.lat]).addTo(map);
         markers.current.set(car.id, { marker, look });
       }
@@ -605,7 +646,7 @@ export function Fleet({ cars: fleet, glideMs = 2800 }: { cars: FleetCar[]; glide
           m.setRotation(pose.heading);
         }
         if (layer) {
-          layer.set(car.id, { ...pose, speed: 0, type: car.type, dim: car.onTrip });
+          layer.set(car.id, { ...pose, speed: car.duty === 'free' ? 4 : 9, type: car.type, duty: car.duty });
           drawn.current.add(car.id);
         }
       }
@@ -754,5 +795,125 @@ export function GridOverlay({ cells }: { cells: GridCellShape[] }) {
     sent.current = data;
     (map.getSource(source) as GeoJSONSource | undefined)?.setData(data);
   }, [map, source, data]);
+  return null;
+}
+
+// ------------------------------------------------------------------ the living city (admin)
+
+export type RiderState = 'searching' | 'waiting' | 'boarding';
+
+export interface WaitingRider {
+  /** the ride */
+  id: string;
+  lat: number;
+  lng: number;
+  state: RiderState;
+  label: string;
+}
+
+const RIDER_GLYPH =
+  '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="4.6" r="3.1"/><path d="M2.2 15.2c0-3.4 2.6-5.8 5.8-5.8s5.8 2.4 5.8 5.8z"/></svg>';
+
+/** Riders standing at their pickups: still searching (pulsing), a driver on the way, boarding. */
+export function RiderMarkers({ riders, onSelect }: { riders: WaitingRider[]; onSelect?: (rideId: string) => void }) {
+  const { map } = useMapState();
+  const markers = useRef(new Map<string, { marker: maplibregl.Marker; el: HTMLElement }>());
+  const select = useRef(onSelect);
+  useEffect(() => {
+    select.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    const all = markers.current;
+    return () => {
+      for (const { marker } of all.values()) marker.remove();
+      all.clear();
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const ids = new Set(riders.map((r) => r.id));
+    for (const [id, { marker }] of markers.current) {
+      if (!ids.has(id)) {
+        marker.remove();
+        markers.current.delete(id);
+      }
+    }
+    for (const r of riders) {
+      let entry = markers.current.get(r.id);
+      if (!entry) {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.innerHTML = RIDER_GLYPH;
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          select.current?.(r.id);
+        });
+        entry = { marker: new maplibregl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map), el };
+        markers.current.set(r.id, entry);
+      }
+      entry.el.className = `rx-rider rx-rider-${r.state}`;
+      entry.el.setAttribute('aria-label', r.label);
+      entry.el.title = r.label;
+      entry.marker.setLngLat([r.lng, r.lat]);
+    }
+  }, [map, riders]);
+
+  return null;
+}
+
+export interface DispatchLine {
+  id: string;
+  from: LatLng;
+  to: LatLng;
+  /** a car heading to its rider, or carrying them to the drop */
+  kind: 'pickup' | 'trip';
+}
+
+/** Who is heading where: dashed lines from each busy car to its pickup (amber) or drop (teal). */
+export function DispatchLines({ lines }: { lines: DispatchLine[] }) {
+  const { map } = useMapState();
+  const id = `rx-dispatch-${useId().replace(/:/g, '')}`;
+  const data = useMemo<FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: lines.map((l) => ({
+        type: 'Feature',
+        properties: { kind: l.kind },
+        geometry: { type: 'LineString', coordinates: [[l.from[1], l.from[0]], [l.to[1], l.to[0]]] },
+      })),
+    }),
+    [lines],
+  );
+  const sent = useRef<unknown>(null);
+  useEffect(() => {
+    map.addSource(id, { type: 'geojson', data });
+    sent.current = data;
+    map.addLayer(
+      {
+        id: `${id}-line`,
+        type: 'line',
+        source: id,
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': ['match', ['get', 'kind'], 'pickup', '#f08c00', '#0b6e79'],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 16, 2.6],
+          'line-dasharray': [1.5, 2],
+          'line-opacity': ['match', ['get', 'kind'], 'pickup', 0.9, 0.55],
+        },
+      },
+      map.getLayer(BUILDINGS_3D) ? BUILDINGS_3D : undefined,
+    );
+    return () => {
+      if (!map.getStyle()) return;
+      if (map.getLayer(`${id}-line`)) map.removeLayer(`${id}-line`);
+      if (map.getSource(id)) map.removeSource(id);
+    };
+  }, [map, id]); // eslint-disable-line react-hooks/exhaustive-deps -- later data goes through setData below
+  useEffect(() => {
+    if (sent.current === data) return;
+    sent.current = data;
+    (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
+  }, [map, id, data]);
   return null;
 }

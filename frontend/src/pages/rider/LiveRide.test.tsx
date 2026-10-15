@@ -10,7 +10,7 @@ import { LiveRide } from './LiveRide';
 vi.mock('../../api/endpoints', () => ({
   ridesApi: { get: vi.fn(), cancel: vi.fn() },
   trackingApi: { location: vi.fn() },
-  driversApi: { forRide: vi.fn() },
+  driversApi: { forRide: vi.fn(), nearby: vi.fn().mockResolvedValue([]) },
   placesApi: { route: vi.fn() },
   paymentsApi: { forRide: vi.fn(), verify: vi.fn(), retry: vi.fn() },
 }));
@@ -22,6 +22,7 @@ vi.mock('../../map/MapView', () => ({
   DropPin: () => null,
   RouteLine: () => null,
   FitTo: () => null,
+  Fleet: () => null,
   AnimatedCar: ({ lat, lng }: { lat: number; lng: number }) => <span data-testid="car">{`${lat},${lng}`}</span>,
 }));
 

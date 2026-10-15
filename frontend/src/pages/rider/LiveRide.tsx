@@ -11,10 +11,11 @@ import { RideTimeline } from '../../components/RideTimeline';
 import { Button, ErrorNote, Eyebrow, Meter, PinTiles, Plate, Sheet, Spinner } from '../../components/ui';
 import { distance, inr, minutes, rideTypeLabel, shortAddress } from '../../lib/format';
 import { newest, type LatLng } from '../../lib/geo';
-import { AnimatedCar, BaseMap, DropPin, FitTo, PickupPin, RouteLine } from '../../map/MapView';
+import { AnimatedCar, BaseMap, DropPin, FitTo, Fleet, PickupPin, RouteLine } from '../../map/MapView';
 import { useFollowedRoute, type Leg } from '../../map/useFollowedRoute';
 import { useRealistic } from '../../map/useRealistic';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
+import { useNearbyCars } from './useNearbyCars';
 
 const TRACKED = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
 
@@ -40,6 +41,8 @@ function RideScreen({ rideId }: { rideId: string }) {
   const tracked = !!r && TRACKED.includes(r.status);
   const active = !!r && ACTIVE_STATUSES.includes(r.status);
   const rx = useRealistic(active);
+  // while it searches, the free cars around the pickup (one of them may take the ride)
+  const nearby = useNearbyCars(r?.status === 'REQUESTED' ? r.pickup : null);
 
   const initial = useQuery({
     queryKey: ['location', rideId],
@@ -112,6 +115,7 @@ function RideScreen({ rideId }: { rideId: string }) {
     <>
       <BaseMap realistic={rx.active} night={rx.night}>
         <PickupPin at={[r.pickup.lat, r.pickup.lng]} />
+        {r.status === 'REQUESTED' && <Fleet cars={nearby.cars} />}
         {r.status !== 'DRIVER_ASSIGNED' && r.status !== 'DRIVER_ARRIVED' && <DropPin at={[r.drop.lat, r.drop.lng]} />}
         {routePoints && <RouteLine polyline={road.polyline} fallback={routePoints} progress={moving ? road.lineProgress : null} />}
         {tracked && location && (

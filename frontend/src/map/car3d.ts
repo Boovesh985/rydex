@@ -18,10 +18,10 @@ export interface CarPose {
   /** m/s, spins the wheels */
   speed: number;
   type: RideType | null;
-  /** the car this screen is about: a ring under it and a slightly bigger model */
+  /** the car this screen is about: a pulsing ring under it and a slightly bigger model */
   focus?: boolean;
-  /** greyed out (an admin's view of a car on a trip) */
-  dim?: boolean;
+  /** an admin's view of the fleet: an amber ring heading to a pickup, a teal one carrying a rider */
+  duty?: 'free' | 'pickup' | 'trip';
 }
 
 interface Spec {
@@ -67,7 +67,6 @@ interface CarModel {
   headlights: THREE.MeshStandardMaterial;
   ring: THREE.Mesh;
   spec: Spec;
-  dim: boolean;
 }
 
 function buildCar(type: RideType | null, shadow: THREE.Texture): CarModel {
@@ -127,7 +126,7 @@ function buildCar(type: RideType | null, shadow: THREE.Texture): CarModel {
     group.add(back);
   }
 
-  // headlight beams, only at night: additive cones reaching ahead
+  // headlight beams, at night on the focus car: additive cones reaching ahead
   const beams = new THREE.Group();
   const beamMaterial = new THREE.MeshBasicMaterial({
     color: '#fff1b8',
@@ -189,7 +188,7 @@ function buildCar(type: RideType | null, shadow: THREE.Texture): CarModel {
   ring.visible = false;
   group.add(ring);
 
-  return { group, wheels, beams, headlights, ring, spec: s, dim: false };
+  return { group, wheels, beams, headlights, ring, spec: s };
 }
 
 export interface CarLayer {
@@ -226,10 +225,7 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
     hemi.intensity = night ? 0.55 : 1.6;
     hemi.color.set(night ? '#8fa6ff' : '#ffffff');
     sun.intensity = night ? 0.35 : 2.2;
-    for (const m of models.values()) {
-      m.beams.visible = night;
-      m.headlights.emissiveIntensity = night ? 2.4 : 0.4;
-    }
+    for (const m of models.values()) m.headlights.emissiveIntensity = night ? 2.4 : 0.4;
   };
 
   const layer: CustomLayerInterface = {
@@ -269,7 +265,6 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
         if (!model || model.spec !== (pose.type ? SPECS[pose.type] : UNKNOWN)) {
           if (model) scene.remove(model.group);
           model = buildCar(pose.type, shadow);
-          model.beams.visible = night;
           model.headlights.emissiveIntensity = night ? 2.4 : 0.4;
           models.set(carId, model);
           scene.add(model.group);
@@ -279,21 +274,21 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
         model.group.rotation.y = (-pose.heading * Math.PI) / 180;
         const wanted = ((pose.focus ? FOCUS_PX : FLEET_PX) * mpp) / model.spec.length;
         model.group.scale.setScalar(Math.min(40, Math.max(1, wanted)));
+        // beams only on the car being followed: on a scaled-up fleet car far away they read as giant wedges
+        model.beams.visible = night && !!pose.focus;
         for (const w of model.wheels) w.rotation.x -= (pose.speed * dt) / 0.33;
-        model.ring.visible = !!pose.focus;
+        const duty = pose.duty && pose.duty !== 'free' ? pose.duty : null;
+        model.ring.visible = !!pose.focus || !!duty;
+        const ringMaterial = model.ring.material as THREE.MeshBasicMaterial;
         if (pose.focus) {
           const pulse = (now % 1600) / 1600;
           model.ring.scale.setScalar(0.9 + pulse * 0.5);
-          (model.ring.material as THREE.MeshBasicMaterial).opacity = 0.75 * (1 - pulse);
-        }
-        if (model.dim !== !!pose.dim) {
-          model.dim = !!pose.dim;
-          model.group.traverse((o) => {
-            if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial && o.material !== glass) {
-              o.material.transparent = model.dim;
-              o.material.opacity = model.dim ? 0.45 : 1;
-            }
-          });
+          ringMaterial.color.set('#3fd0dc');
+          ringMaterial.opacity = 0.75 * (1 - pulse);
+        } else if (duty) {
+          model.ring.scale.setScalar(1);
+          ringMaterial.color.set(duty === 'pickup' ? '#f08c00' : '#0b6e79');
+          ringMaterial.opacity = 0.85;
         }
       }
       const m = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix as unknown as number[]);

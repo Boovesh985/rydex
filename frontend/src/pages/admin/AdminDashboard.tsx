@@ -1,53 +1,48 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { adminApi, ridesApi } from '../../api/endpoints';
 import { errorMessage } from '../../api/http';
-import type { Payment, Ride, RideType } from '../../api/types';
+import type { Page, Payment, Ride, RideType } from '../../api/types';
 import { PaymentBadge } from '../../components/PaymentPanel';
 import { RealisticBar, RealisticButton } from '../../components/Realistic';
 import { RideStatusChip } from '../../components/RideStatusChip';
 import { Button, ErrorNote, Eyebrow } from '../../components/ui';
-import { config } from '../../config';
 import { clock, inr, minutes, rideTypeLabel, shortAddress, when } from '../../lib/format';
 import type { LatLng } from '../../lib/geo';
-import { BaseMap, DemandHeat, Fleet, GridOverlay, MapMoves, type FleetCar, type GridCellShape } from '../../map/MapView';
+import { BaseMap, DemandHeat, DispatchLines, Fleet, GridOverlay, MapMoves, RiderMarkers, type GridCellShape } from '../../map/MapView';
+import { TRAFFIC_COLORS } from '../../map/traffic';
 import { useRealistic } from '../../map/useRealistic';
+import { cityView } from './city';
 
 const TYPE_COLOR: Record<RideType, string> = { ECONOMY: '#ffc21a', COMFORT: '#f2f3ef', XL: '#2c313a' };
+/** the living city's centre (ADR 0016): T Nagar, so the old city, the beach and the IT corridor are in view */
+const CITY: LatLng = [13.045, 80.245];
 
-type Layer = 'drivers' | 'grid' | 'demand';
+type Layer = 'drivers' | 'riders' | 'trips' | 'grid' | 'demand';
 type Tab = 'overview' | 'rides' | 'payments';
+const LAYER_LABEL: Record<Layer, string> = { drivers: 'Drivers', riders: 'Riders', trips: 'Trips', grid: 'Geohash grid', demand: 'Demand' };
 
-/** Ops view: live drivers, the matching grid around the map centre, where rides are requested, KPIs, rides, payments. */
+/**
+ * Ops view of the living city: every car (free, heading to a pickup, carrying a rider), riders
+ * waiting at their pickups, who is heading where, traffic, the matching grid, demand, KPIs, rides
+ * and payments; in 2D or in realistic 3D.
+ */
 export function AdminDashboard() {
-  const [center, setCenter] = useState<LatLng>([config.center.lat, config.center.lng]);
-  const [layers, setLayers] = useState<Record<Layer, boolean>>({ drivers: true, grid: true, demand: true });
+  const navigate = useNavigate();
+  const [center, setCenter] = useState<LatLng>(CITY);
+  const [layers, setLayers] = useState<Record<Layer, boolean>>({ drivers: true, riders: true, trips: true, grid: false, demand: false });
   const [tab, setTab] = useState<Tab>('overview');
   const rx = useRealistic(true);
 
   const drivers = useQuery({ queryKey: ['admin', 'drivers'], queryFn: adminApi.liveDrivers, refetchInterval: 3000 });
+  const inFlight = useQuery({ queryKey: ['admin', 'rides', 'active'], queryFn: () => ridesApi.all(0, 100, true), refetchInterval: 4000 });
   const grid = useQuery({ queryKey: ['admin', 'grid', center[0].toFixed(3), center[1].toFixed(3)], queryFn: () => adminApi.grid(center[0], center[1]), refetchInterval: 10_000, enabled: layers.grid });
   const demand = useQuery({ queryKey: ['admin', 'demand'], queryFn: () => adminApi.demand(24), refetchInterval: 30_000, enabled: layers.demand });
   const stats = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => adminApi.stats(24), refetchInterval: 10_000 });
 
-  const live = useMemo(() => drivers.data ?? [], [drivers.data]);
-  const online = live.filter((d) => d.status === 'AVAILABLE').length;
-  const onTrip = live.filter((d) => d.status === 'ON_TRIP').length;
-  const fleet = useMemo<FleetCar[]>(
-    () =>
-      live.map((d) => ({
-        id: d.driverId,
-        lat: d.lat,
-        lng: d.lng,
-        heading: d.heading,
-        type: d.rideType,
-        onTrip: d.status === 'ON_TRIP',
-        label: `${d.rideType ? rideTypeLabel[d.rideType] : 'Driver'} · ${d.status === 'ON_TRIP' ? 'on a trip' : (d.status?.toLowerCase() ?? 'unknown')}`,
-      })),
-    [live],
-  );
+  const city = useMemo(() => cityView(drivers.data ?? [], inFlight.data?.items ?? []), [drivers.data, inFlight.data]);
   const cells = useMemo<GridCellShape[]>(
     () =>
       (grid.data?.cells ?? []).map((c) => ({
@@ -62,21 +57,23 @@ export function AdminDashboard() {
   return (
     <div className="flex h-full flex-col md:flex-row">
       <div className="relative h-[55dvh] shrink-0 md:h-full md:flex-1">
-        <BaseMap zoom={13} realistic={rx.active} night={rx.night}>
+        <BaseMap center={CITY} zoom={12.6} realistic={rx.active} night={rx.night}>
           <MapMoves onMove={setCenter} />
           {layers.demand && demand.data && <DemandHeat cells={demand.data} />}
           {layers.grid && <GridOverlay cells={cells} />}
-          {layers.drivers && <Fleet cars={fleet} />}
+          {layers.trips && <DispatchLines lines={city.lines} />}
+          {layers.drivers && <Fleet cars={city.fleet} />}
+          {layers.riders && <RiderMarkers riders={city.riders} onSelect={(id) => navigate(`/trips/${id}`)} />}
         </BaseMap>
-        <div className="absolute top-20 left-3 z-[1000] flex gap-1 rounded-xl bg-paper p-1 shadow-[var(--shadow-float)] md:left-4">
-          {(['drivers', 'grid', 'demand'] as Layer[]).map((l) => (
+        <div className="absolute top-20 left-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1 rounded-xl bg-paper p-1 shadow-[var(--shadow-float)] md:left-4">
+          {(Object.keys(LAYER_LABEL) as Layer[]).map((l) => (
             <button
               key={l}
               aria-pressed={layers[l]}
               onClick={() => setLayers({ ...layers, [l]: !layers[l] })}
-              className={`rounded-lg px-3 py-1.5 text-sm font-bold capitalize ${layers[l] ? 'bg-ink text-chalk' : 'text-slate hover:bg-chalk'}`}
+              className={`rounded-lg px-3 py-1.5 text-sm font-bold ${layers[l] ? 'bg-ink text-chalk' : 'text-slate hover:bg-chalk'}`}
             >
-              {l === 'grid' ? 'Geohash grid' : l}
+              {LAYER_LABEL[l]}
             </button>
           ))}
         </div>
@@ -86,7 +83,7 @@ export function AdminDashboard() {
       <aside className="flex-1 space-y-5 overflow-y-auto bg-paper p-4 md:w-[400px] md:flex-none md:pt-20">
         <div>
           <h1 className="font-display-wide text-2xl font-black">Operations</h1>
-          <p className="text-sm text-slate">Last 24 hours · live</p>
+          <p className="text-sm text-slate">The living city · last 24 hours · live</p>
         </div>
         <div className="grid grid-cols-3 gap-1 rounded-xl bg-chalk p-1" role="tablist" aria-label="Operations views">
           {(
@@ -110,38 +107,73 @@ export function AdminDashboard() {
 
         {tab === 'overview' && (
           <>
-            <ErrorNote>{stats.error && errorMessage(stats.error)}</ErrorNote>
-            <div className="grid grid-cols-2 gap-2">
-              <Kpi label="Drivers online" value={`${online}`} note={`${onTrip} on a trip`} />
-              <Kpi label="Rides in flight" value={stats.data ? `${Object.values(stats.data.inFlight).reduce((a, b) => a + b, 0)}` : '–'} note={stats.data ? `${stats.data.inFlight.REQUESTED ?? 0} searching` : ''} />
+            <ErrorNote>{(stats.error || drivers.error) && errorMessage(stats.error ?? drivers.error)}</ErrorNote>
+            <section aria-label="Right now" className="grid grid-cols-2 gap-2">
+              <Kpi label="Free drivers" value={`${city.counts.free}`} note="cruising, waiting for a request" />
+              <Kpi label="To pickups" value={`${city.counts.toPickup}`} note="driving to their rider" />
+              <Kpi label="With riders" value={`${city.counts.carrying}`} note="trips under way" />
+              <Kpi label="Riders waiting" value={`${city.counts.searching + city.counts.waiting}`} note={`${city.counts.searching} still searching`} />
+            </section>
+            <section aria-label="Last 24 hours" className="grid grid-cols-2 gap-2">
               <Kpi label="Requested" value={stats.data ? `${stats.data.requested}` : '–'} note={stats.data ? `${stats.data.completed} done · ${stats.data.cancelled} cancelled` : ''} />
               <Kpi label="Match rate" value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`} note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign`} />
               <Kpi label="Revenue" value={stats.data ? inr(stats.data.revenue) : '–'} note={stats.data?.avgFare == null ? '' : `${inr(stats.data.avgFare)} avg fare`} />
               <Kpi label="Pickup wait" value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)} note="assigned → arrived" />
-            </div>
+            </section>
             {grid.data && layers.grid && (
               <p className="text-sm text-slate">
                 Map centre cell <span className="font-mono font-bold text-ink">{grid.data.center}</span>: {grid.data.availableDrivers} drivers available and {grid.data.recentRequests} requests in the 3×3 search area.
               </p>
             )}
-            <div className="flex flex-wrap gap-3 text-xs text-slate" aria-label="Legend">
-              {(Object.keys(TYPE_COLOR) as RideType[]).map((t) => (
-                <span key={t} className="flex items-center gap-1">
-                  <span className="size-3 rounded-sm border border-ink" style={{ background: TYPE_COLOR[t] }} /> {rideTypeLabel[t]}
-                </span>
-              ))}
-              <span className="flex items-center gap-1">
-                <span className="size-3 rounded-sm border border-ink bg-[#7d838c]" /> On a trip
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="size-3 rounded-full bg-gradient-to-r from-auto to-signal" /> Demand
-              </span>
-            </div>
+            <Legend />
+            <p className="text-xs text-slate">
+              Start the city with <code className="rounded bg-chalk px-1 font-mono">python simulate.py --city</code>: automated drivers and riders (NPCs) book, drive and pay on their own. rider1 and driver01 are yours to test with.
+            </p>
           </>
         )}
-        {tab === 'rides' && <LiveRides />}
+        {tab === 'rides' && <LiveRides active={inFlight} />}
         {tab === 'payments' && <Payments />}
       </aside>
+    </div>
+  );
+}
+
+function Legend() {
+  const swatch = 'size-3 rounded-sm border border-ink';
+  return (
+    <div className="space-y-2 text-xs text-slate" aria-label="Legend">
+      <div className="flex flex-wrap gap-3">
+        {(Object.keys(TYPE_COLOR) as RideType[]).map((t) => (
+          <span key={t} className="flex items-center gap-1">
+            <span className={swatch} style={{ background: TYPE_COLOR[t] }} /> {rideTypeLabel[t]}
+          </span>
+        ))}
+        <span className="flex items-center gap-1">
+          <span className={`${swatch} border-2 border-[#f08c00]`} /> To a pickup
+        </span>
+        <span className="flex items-center gap-1">
+          <span className={`${swatch} border-2 border-[#0b6e79]`} /> With a rider
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <span className="flex items-center gap-1">
+          <span className="size-3 rounded-full border-[3px] border-auto bg-paper" /> Rider searching
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="size-3 rounded-full border-[3px] border-[#3fb6c2] bg-paper" /> Driver on the way
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="size-3 rounded-full border-[3px] border-[#1fae63] bg-paper" /> Boarding
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <span>Traffic</span>
+        {Object.entries(TRAFFIC_COLORS).map(([band, color]) => (
+          <span key={band} className="flex items-center gap-1 capitalize">
+            <span className="h-1.5 w-4 rounded-full" style={{ background: color }} /> {band}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -157,8 +189,7 @@ function Kpi({ label, value, note }: { label: string; value: string; note?: stri
 }
 
 /** Rides in flight (watch any of them live), then the latest ones. */
-function LiveRides() {
-  const active = useQuery({ queryKey: ['admin', 'rides', 'active'], queryFn: () => ridesApi.all(0, 50, true), refetchInterval: 5000 });
+function LiveRides({ active }: { active: UseQueryResult<Page<Ride>> }) {
   const recent = useQuery({ queryKey: ['admin', 'rides', 'recent'], queryFn: () => ridesApi.all(0, 10, false), refetchInterval: 15_000 });
   const finished = (recent.data?.items ?? []).filter((r) => !['REQUESTED', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'].includes(r.status));
   return (
@@ -190,6 +221,11 @@ function RideRow({ ride }: { ride: Ride }) {
         </p>
         <p className="flex items-center gap-1.5 text-xs text-slate">
           <RideStatusChip status={ride.status} />
+          {ride.simulated && (
+            <span className="rounded bg-mist px-1 font-mono text-[10px] font-bold text-ink" title="Booked by an automated rider of the living city">
+              NPC
+            </span>
+          )}
           {rideTypeLabel[ride.rideType]} · {clock(ride.requestedAt)} · {inr(ride.finalFare ?? ride.estFare)}
         </p>
       </div>

@@ -3,11 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { placesApi, ridesApi } from '../../api/endpoints';
 import { ACTIVE_STATUSES, type Estimate, type GeoPoint } from '../../api/types';
+import { RealisticBar, RealisticButton } from '../../components/Realistic';
 import { Sheet } from '../../components/ui';
 import { config } from '../../config';
 import type { LatLng } from '../../lib/geo';
-import { BaseMap, DropPin, FitTo, MapClicks, PickupPin, RouteLine } from '../../map/MapView';
+import { BaseMap, DropPin, FitTo, Fleet, MapClicks, PickupPin, RouteLine } from '../../map/MapView';
+import { useRealistic } from '../../map/useRealistic';
 import { BookingPanel, type Field } from './BookingPanel';
+import { useNearbyCars } from './useNearbyCars';
 
 /** Where the rider is: the browser's position if they allow it, else Chennai Central. */
 function useStartPoint(onFound: (p: GeoPoint) => void) {
@@ -41,6 +44,8 @@ export function RiderHome() {
   const [drop, setDrop] = useState<GeoPoint | null>(null);
   const [field, setField] = useState<Field>('drop');
   const [estimate, setEstimate] = useState<Estimate | null>(null);
+  const rx = useRealistic(true);
+  const nearby = useNearbyCars(pickup);
 
   useStartPoint((p) => setPickup((cur) => cur ?? p));
 
@@ -60,17 +65,24 @@ export function RiderHome() {
     [field, drop],
   );
 
-  const fit = useMemo<LatLng[]>(
-    () => [pickup, drop].filter((p): p is GeoPoint => !!p).map((p) => [p.lat, p.lng]),
-    [pickup, drop],
-  );
+  // before a drop is chosen, frame the pickup with the closest cars (once per pickup: they keep moving)
+  const pickupKey = pickup ? `${pickup.lat.toFixed(4)},${pickup.lng.toFixed(4)}` : '';
+  const [framed, setFramed] = useState<{ key: string; cars: LatLng[] } | null>(null);
+  if (pickup && nearby.loaded && framed?.key !== pickupKey) {
+    setFramed({ key: pickupKey, cars: nearby.cars.slice(0, 3).map((c): LatLng => [c.lat, c.lng]) });
+  }
+  const fit = useMemo<LatLng[]>(() => {
+    const pins = [pickup, drop].filter((p): p is GeoPoint => !!p).map((p): LatLng => [p.lat, p.lng]);
+    return !drop && framed?.key === pickupKey ? [...pins, ...framed.cars] : pins;
+  }, [pickup, drop, framed, pickupKey]);
 
   if (active) return <Navigate to={`/ride/${active.id}`} replace />;
 
   return (
     <>
-      <BaseMap>
+      <BaseMap realistic={rx.active} night={rx.night}>
         <MapClicks onClick={tap} />
+        <Fleet cars={nearby.cars} />
         {pickup && <PickupPin at={[pickup.lat, pickup.lng]} />}
         {drop && <DropPin at={[drop.lat, drop.lng]} />}
         {estimate && pickup && drop && (
@@ -78,6 +90,8 @@ export function RiderHome() {
         )}
         <FitTo points={fit} />
       </BaseMap>
+      {rx.active ? <RealisticBar night={rx.night} onNight={rx.toggleNight} onExit={rx.exit} /> : <RealisticButton onClick={rx.enter} />}
+      {pickup && nearby.loaded && <NearbyChip count={nearby.count} closestMin={nearby.closestMin} />}
       <Sheet>
         <BookingPanel
           pickup={pickup}
@@ -94,5 +108,18 @@ export function RiderHome() {
         />
       </Sheet>
     </>
+  );
+}
+
+/** "6 cars nearby · closest 2 min", over the map. */
+function NearbyChip({ count, closestMin }: { count: number; closestMin: number | null }) {
+  return (
+    <p
+      role="status"
+      className="pointer-events-none absolute top-[4.6rem] left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-ink px-3 py-1.5 text-sm font-bold text-chalk shadow-[var(--shadow-float)] max-md:top-auto max-md:bottom-[52dvh] md:top-20 md:left-[calc(50%+210px)]"
+    >
+      <span className={`size-2 rounded-full ${count > 0 ? 'bg-go' : 'bg-slate'}`} aria-hidden />
+      {count === 0 ? 'No cars nearby right now' : `${count} ${count === 1 ? 'car' : 'cars'} nearby · closest ${closestMin} min`}
+    </p>
   );
 }

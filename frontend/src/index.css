@@ -195,3 +195,128 @@
     transform: translateX(300%);
   }
 }
+
+/* map switches (traffic, day/night) in MapLibre's control corner */
+.rx-prefs button {
+  display: grid;
+  place-items: center;
+  color: var(--color-ink);
+}
+
+.rx-prefs button.rx-on {
+  background: var(--color-chalk);
+}
+
+.rx-traffic-icon {
+  display: flex;
+  gap: 2px;
+}
+
+.rx-traffic-icon i {
+  display: block;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.rx-prefs button:not(.rx-on) .rx-traffic-icon {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+/* realistic mode's sky: sun, moon, stars, clouds (above the horizon only) */
+.rx-sun {
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  background: radial-gradient(circle, #fffdf2 0 22%, rgb(255 238 170 / 0.85) 30%, rgb(255 214 120 / 0.28) 52%, rgb(255 200 110 / 0) 72%);
+}
+
+.rx-moon {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 38% 36%, #fbfbf4 0 30%, #e2e5da 62%, #c9cdc1 100%);
+  box-shadow:
+    0 0 30px 8px rgb(205 220 255 / 0.35),
+    inset -6px -4px 0 rgb(0 0 0 / 0.06);
+}
+
+.rx-cloud {
+  fill: rgb(255 255 255 / 0.88);
+  filter: blur(0.6px) drop-shadow(0 6px 10px rgb(120 140 160 / 0.18));
+}
+
+.rx-cloud-night {
+  fill: rgb(70 80 104 / 0.55);
+  filter: blur(0.8px);
+}
+
+.rx-star {
+  opacity: 0.8;
+  animation: rx-twinkle 3.6s ease-in-out infinite;
+}
+
+@keyframes rx-twinkle {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* a rider waiting at their pickup (admin map): searching, driver on the way, boarding */
+.rx-rider {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--rx-ring, var(--color-auto));
+  box-shadow: 0 3px 6px rgb(22 24 29 / 0.3);
+  cursor: pointer;
+}
+
+.rx-rider svg {
+  width: 13px;
+  height: 13px;
+  fill: var(--color-ink);
+}
+
+.rx-rider-searching {
+  --rx-ring: var(--color-auto);
+}
+
+.rx-rider-searching::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  border: 2px solid var(--color-auto);
+  animation: rx-pulse 1.6s ease-out infinite;
+}
+
+.rx-rider-waiting {
+  --rx-ring: #3fb6c2;
+}
+
+.rx-rider-boarding {
+  --rx-ring: #1fae63;
+}
+
+/* a car's duty on the admin map: free, heading to a pickup, carrying a rider */
+.rx-car-pickup svg rect:first-of-type {
+  stroke: #f08c00;
+  stroke-width: 3;
+}
+
+.rx-car-trip svg rect:first-of-type {
+  stroke: #0b6e79;
+  stroke-width: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rx-star,
+  .rx-rider-searching::after {
+    animation: none;
+  }
+}

@@ -1,9 +1,10 @@
 import type { Map as MlMap } from 'maplibre-gl';
+import { lightPosition, skyLight } from './sky';
 
 /**
  * The base map: OpenFreeMap's "Positron" vector style (OpenStreetMap data, free, no key), recoloured
  * at runtime to the Rydex palette. "Realistic" adds extruded 3D buildings, a sky with fog and a
- * sun (or moon) light; night swaps every colour for a dark city.
+ * sun (or moon) light from where it really is over Chennai; night swaps every colour for a dark city.
  */
 export const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 export interface Look {
@@ -34,7 +35,7 @@ interface Palette {
   sky: string;
   horizon: string;
   fog: string;
-  light: { color: string; intensity: number; position: [number, number, number] };
+  light: { color: string; intensity: number };
 }
 
 const DAY: Palette = {
@@ -56,10 +57,10 @@ const DAY: Palette = {
   label: '#4a4f57',
   labelHalo: 'rgba(255,255,255,0.85)',
   waterLabel: '#3f6f78',
-  sky: '#86c3e3',
-  horizon: '#f3ecdc',
-  fog: '#eef0ea',
-  light: { color: '#fff8e8', intensity: 0.55, position: [1.4, 205, 35] },
+  sky: '#4f9bd9',
+  horizon: '#cfe5f3',
+  fog: '#e4ecef',
+  light: { color: '#fff8e8', intensity: 0.55 },
 };
 
 const NIGHT: Palette = {
@@ -71,7 +72,7 @@ const NIGHT: Palette = {
   waterway: '#0f3340',
   building: '#1e232c',
   buildingLine: '#272d38',
-  tower: ['#252a34', '#323a48'],
+  tower: ['#1c222c', '#28303c'],
   minor: '#2a303b',
   path: '#222731',
   majorInner: '#3a4250',
@@ -84,7 +85,7 @@ const NIGHT: Palette = {
   sky: '#0a1022',
   horizon: '#2b2a48',
   fog: '#151a26',
-  light: { color: '#9fb7ff', intensity: 0.22, position: [1.4, 30, 70] },
+  light: { color: '#c3cde6', intensity: 0.14 },
 };
 
 export const BUILDINGS_3D = 'rx-buildings-3d';
@@ -194,16 +195,17 @@ export function applyLook(map: MlMap, look: Look, previous?: Look) {
     showBuildings(map, look.realistic);
     if (map.getLayer('building')) map.setLayoutProperty('building', 'visibility', look.realistic ? 'none' : 'visible');
   }
-  map.setLight({ anchor: 'map', color: p.light.color, intensity: p.light.intensity, position: p.light.position });
+  // the sun (or moon) where it is over Chennai now: buildings are lit from that side
+  map.setLight({ anchor: 'map', color: p.light.color, intensity: p.light.intensity, position: lightPosition(skyLight(new Date(), look.night)) });
   map.setSky(
     look.realistic
       ? {
           'sky-color': p.sky,
           'horizon-color': p.horizon,
           'fog-color': p.fog,
-          'sky-horizon-blend': 0.6,
-          'horizon-fog-blend': 0.7,
-          'fog-ground-blend': 0.55,
+          'sky-horizon-blend': 0.45,
+          'horizon-fog-blend': 0.55,
+          'fog-ground-blend': 0.7,
           'atmosphere-blend': 0,
         }
       : { 'sky-color': p.land, 'horizon-color': p.land, 'fog-color': p.land, 'fog-ground-blend': 1, 'atmosphere-blend': 0 },

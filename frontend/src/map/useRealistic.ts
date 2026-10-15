@@ -1,19 +1,21 @@
 import { useState } from 'react';
-import { isNightNow } from './theme';
+import { useMapPrefs, useNight } from './mapPrefs';
 
 /**
- * Realistic mode's switches for one screen: on/off, whether the camera follows the car, and
- * day or night (night by default after sunset). `available` false (e.g. the ride ended) turns it off.
+ * Realistic mode's switches for one screen: on/off and whether the camera follows the car. Day or
+ * night is the viewer's map preference (auto by the clock), shared by every map and both views.
+ * `available` false (e.g. the ride ended) turns realistic mode off.
  */
 export function useRealistic(available: boolean) {
   const [on, setOn] = useState(false);
   const [following, setFollowing] = useState(true);
-  const [night, setNight] = useState(isNightNow);
+  const night = useNight();
+  const setTime = useMapPrefs((s) => s.setTime);
   const active = on && available;
   return {
     active,
     following: active && following,
-    night: active && night,
+    night,
     enter: () => {
       setFollowing(true);
       setOn(true);
@@ -21,6 +23,6 @@ export function useRealistic(available: boolean) {
     exit: () => setOn(false),
     toggleFollow: () => setFollowing((f) => !f),
     stopFollowing: () => setFollowing(false),
-    toggleNight: () => setNight((n) => !n),
+    toggleNight: () => setTime(night ? 'day' : 'night'),
   };
 }

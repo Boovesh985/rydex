@@ -102,6 +102,18 @@ export interface Ride {
   paymentStatus: PaymentStatus | null;
   refundedAmount: number | null;
   timeline: StatusChange[] | null;
+  /** booked by an automated (NPC) rider of the living city (ADR 0016) */
+  simulated?: boolean;
+}
+
+/** A free car near a point (its driver is not identified). */
+export interface NearbyCar {
+  id: string;
+  lat: number;
+  lng: number;
+  heading: number | null;
+  rideType: RideType;
+  distanceM: number;
 }
 
 export interface Page<T> {

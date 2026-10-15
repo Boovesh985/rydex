@@ -43,6 +43,10 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
   await expect(page.getByRole('heading', { name: 'Where to?' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Pickup' })).not.toHaveValue('');
 
+  // the free car waiting at the pickup shows on the rider's map (living city, ADR 0016)
+  await expect(page.getByRole('status').filter({ hasText: /cars? nearby · closest \d+ min/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('img', { name: 'Economy nearby' }).first()).toBeAttached();
+
   // drop: tap the map south-east of the pickup, once the map is up (the pickup pin is on it)
   await expect(page.locator('.rx-pin-pickup')).toBeVisible();
   const map = page.locator('.maplibregl-canvas');

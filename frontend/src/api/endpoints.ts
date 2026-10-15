@@ -9,6 +9,7 @@ import type {
   Grid,
   LiveDriver,
   LiveLocation,
+  NearbyCar,
   Offer,
   Page,
   PathPoint,
@@ -84,6 +85,8 @@ export const driversApi = {
   accept: (rideId: string) => api<unknown>(`/api/drivers/me/offers/${rideId}/accept`, { method: 'POST' }),
   reject: (rideId: string) => api<void>(`/api/drivers/me/offers/${rideId}/reject`, { method: 'POST' }),
   forRide: (rideId: string) => api<DriverCard>(`/api/drivers/for-ride/${rideId}`),
+  /** Free cars within 3 km (living city, ADR 0016). */
+  nearby: (lat: number, lng: number) => api<NearbyCar[]>(`/api/drivers/nearby?lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`),
 };
 
 export const trackingApi = {
