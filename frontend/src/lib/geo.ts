@@ -47,3 +47,76 @@ export function along(path: LatLng[], meters: number): { point: LatLng; heading:
   const n = path.length;
   return { point: path[n - 1], heading: bearing(path[n - 2], path[n - 1]), done: true };
 }
+
+/**
+ * A path with cumulative distances, for quick "where is the point d metres along" lookups and
+ * for snapping GPS fixes to the road the route follows.
+ */
+export class PathIndex {
+  readonly path: LatLng[];
+  readonly length: number;
+  private readonly cumulative: number[];
+
+  constructor(path: LatLng[]) {
+    this.path = path;
+    this.cumulative = [0];
+    for (let i = 1; i < path.length; i++) this.cumulative.push(this.cumulative[i - 1] + haversine(path[i - 1], path[i]));
+    this.length = this.cumulative[this.cumulative.length - 1] ?? 0;
+  }
+
+  /** The point `meters` along the path and the heading of its segment (binary search). */
+  at(meters: number): { point: LatLng; heading: number } {
+    const p = this.path;
+    if (p.length === 1) return { point: p[0], heading: 0 };
+    const d = Math.min(Math.max(0, meters), this.length);
+    let lo = 1;
+    let hi = p.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.cumulative[mid] < d) lo = mid + 1;
+      else hi = mid;
+    }
+    const seg = this.cumulative[lo] - this.cumulative[lo - 1];
+    const t = seg === 0 ? 1 : (d - this.cumulative[lo - 1]) / seg;
+    return { point: lerp(p[lo - 1], p[lo], t), heading: bearing(p[lo - 1], p[lo]) };
+  }
+
+  /**
+   * The closest point of the path to `point`: how far along the path it is, and how far off
+   * the path `point` lies (metres, flat-earth approximation, fine at city scale).
+   */
+  project(point: LatLng): { along: number; offset: number } {
+    const p = this.path;
+    if (p.length < 2) return { along: 0, offset: p.length ? haversine(p[0], point) : Infinity };
+    const kx = Math.cos(rad(point[0])) * 111_320;
+    const ky = 110_540;
+    let best = { along: 0, offset: Infinity };
+    for (let i = 1; i < p.length; i++) {
+      const ax = (p[i - 1][1] - point[1]) * kx;
+      const ay = (p[i - 1][0] - point[0]) * ky;
+      const bx = (p[i][1] - point[1]) * kx;
+      const by = (p[i][0] - point[0]) * ky;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2));
+      const cx = ax + dx * t;
+      const cy = ay + dy * t;
+      const offset = Math.hypot(cx, cy);
+      if (offset < best.offset) {
+        best = { along: this.cumulative[i - 1] + (this.cumulative[i] - this.cumulative[i - 1]) * t, offset };
+      }
+    }
+    return best;
+  }
+}
+
+/** Metres per screen pixel at a zoom level and latitude (Web Mercator, 512 px tiles). */
+export const metersPerPixel = (zoom: number, lat: number) => (40_075_016.686 * Math.cos(rad(lat))) / (512 * 2 ** zoom);
+
+/** The more recent of two timestamped fixes (`at` is ISO-8601), or whichever exists. */
+export function newest<T extends { at: string }>(a: T | null | undefined, b: T | null | undefined): T | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return Date.parse(b.at) > Date.parse(a.at) ? b : a;
+}

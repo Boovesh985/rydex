@@ -43,6 +43,10 @@ function proxyTo(target: string): ProxyOptions {
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // MapLibre's tile worker is an ES module
+  worker: { format: 'es' },
+  // MapLibre (~1 MB, loaded with the first map) and three.js (loaded with realistic mode) are single libraries
+  build: { chunkSizeWarningLimit: 1100 },
   server: {
     port: 5173,
     strictPort: true,

@@ -36,5 +36,12 @@ export const useAuth = create<AuthState>()(
   ),
 );
 
+// Tabs share one session: a sign-in, sign-out or token refresh in one tab reaches the others.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'rydex.session' || e.key === null) void useAuth.persist.rehydrate();
+  });
+}
+
 export const homeFor = (role: User['role']) =>
   role === 'DRIVER' ? '/drive' : role === 'ADMIN' ? '/admin' : '/ride';

@@ -10,6 +10,7 @@ const LiveRide = lazy(() => import('./pages/rider/LiveRide').then((m) => ({ defa
 const DriverDashboard = lazy(() => import('./pages/driver/DriverDashboard').then((m) => ({ default: m.DriverDashboard })));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const HistoryPage = lazy(() => import('./pages/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const TripPage = lazy(() => import('./pages/TripPage').then((m) => ({ default: m.TripPage })));
 
 export const routes: RouteObject[] = [
   { path: '/', element: <RootRedirect /> },
@@ -23,6 +24,8 @@ export const routes: RouteObject[] = [
       { path: '/drive', element: <RequireRole role="DRIVER"><DriverDashboard /></RequireRole> },
       { path: '/admin', element: <RequireRole role="ADMIN"><AdminDashboard /></RequireRole> },
       { path: '/history', element: <RequireRole role={['RIDER', 'DRIVER']}><HistoryPage /></RequireRole> },
+      // a driver's past trip, or any ride for an admin (riders use /ride/:rideId)
+      { path: '/trips/:rideId', element: <RequireRole role={['DRIVER', 'ADMIN']}><TripPage /></RequireRole> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

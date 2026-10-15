@@ -5,7 +5,8 @@ import { errorMessage } from '../api/http';
 import type { Role } from '../api/types';
 import { homeFor, useAuth } from '../auth/store';
 import { Wordmark } from '../components/AppShell';
-import { Button, ErrorNote, Field } from '../components/ui';
+import { Check, Circle } from 'lucide-react';
+import { Button, ErrorNote, Field, PasswordField } from '../components/ui';
 
 /** Seeded demo accounts (README); the password is the same for all. */
 const DEMO = [
@@ -85,14 +86,7 @@ export function LoginPage() {
     <AuthFrame title="Sign in">
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Field
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <PasswordField label="Password" autoComplete="current-password" required maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} />
         <ErrorNote>{error}</ErrorNote>
         <Button type="submit" block busy={busy}>
           Sign in
@@ -186,17 +180,9 @@ export function RegisterPage() {
           onChange={set('phone')}
           pattern="\+?[0-9 \-]{10,20}"
         />
-        <Field
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          maxLength={72}
-          hint="At least 8 characters."
-          value={form.password}
-          onChange={set('password')}
-        />
+        <PasswordField label="Password" autoComplete="new-password" required minLength={8} maxLength={128} value={form.password} onChange={set('password')}>
+          <PasswordRules password={form.password} email={form.email} />
+        </PasswordField>
         <ErrorNote>{error}</ErrorNote>
         <Button type="submit" block busy={busy}>
           {role === 'DRIVER' ? 'Create account and add your car' : 'Create account'}
@@ -209,5 +195,26 @@ export function RegisterPage() {
         </Link>
       </p>
     </AuthFrame>
+  );
+}
+
+/** The server's rules, ticked off as they are met. */
+function PasswordRules({ password, email }: { password: string; email: string }) {
+  const local = email.trim().toLowerCase().split('@')[0] ?? '';
+  const rules = [
+    ['At least 8 characters', password.length >= 8],
+    ['A letter and a digit', /\p{L}/u.test(password) && /\d/.test(password)],
+    ['Not your email address', !(local.length >= 4 && password.toLowerCase().includes(local))],
+  ] as const;
+  return (
+    <ul className="mt-1.5 grid gap-0.5 text-xs" aria-label="Password rules">
+      {rules.map(([text, ok]) => (
+        <li key={text} className={`flex items-center gap-1.5 ${ok && password ? 'text-go' : 'text-slate'}`}>
+          {ok && password ? <Check className="size-3.5" aria-hidden /> : <Circle className="size-3" aria-hidden />}
+          {text}
+          <span className="sr-only">{ok && password ? ' (done)' : ''}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

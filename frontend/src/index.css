@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import 'leaflet/dist/leaflet.css';
 
 /*
  * Rydex tokens. Chalk surfaces, ink type, auto-rickshaw yellow for the one action that
@@ -60,23 +59,100 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Leaflet sits under the sheets; its controls follow the palette. */
-.leaflet-container {
+/* MapLibre sits under the sheets; its controls follow the palette. */
+.maplibregl-map {
   font-family: var(--font-sans);
-  background: #e9ebe4;
 }
 
-.leaflet-control-zoom a {
-  color: var(--color-ink) !important;
+.maplibregl-ctrl-group {
+  border-radius: 0.75rem !important;
+  box-shadow: var(--shadow-float) !important;
+  overflow: hidden;
 }
 
-.leaflet-div-icon.rx-icon {
-  background: transparent;
-  border: 0;
+.maplibregl-ctrl-group button {
+  width: 36px !important;
+  height: 36px !important;
+}
+
+.maplibregl-ctrl-bottom-right {
+  bottom: 8px;
+}
+
+/* pickup / drop: a flag on a stem over a ground dot; stands upright when the map is pitched */
+.rx-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 6px rgb(22 24 29 / 0.25));
+}
+
+.rx-pin-flag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 4px 9px 4px 6px;
+  font: 700 12px/1 var(--font-display);
+  font-stretch: 112%;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.rx-pin-flag i {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+
+.rx-pin-pickup .rx-pin-flag {
+  background: var(--color-ink);
+  color: var(--color-chalk);
+}
+
+.rx-pin-pickup .rx-pin-flag i {
+  border: 3px solid var(--color-chalk);
+  border-radius: 999px;
+}
+
+.rx-pin-drop .rx-pin-flag {
+  background: var(--color-auto);
+  color: var(--color-ink);
+}
+
+.rx-pin-drop .rx-pin-flag i {
+  background: var(--color-ink);
+  border-radius: 2px;
+}
+
+.rx-pin-stem {
+  width: 2px;
+  height: 14px;
+  background: var(--color-ink);
+}
+
+.rx-pin-dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-ink);
+  border: 2px solid #fff;
+}
+
+.rx-pin-dot::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 999px;
+  border: 2px solid var(--color-ink);
+  animation: rx-pulse 1.8s ease-out infinite;
+  opacity: 0;
 }
 
 .rx-car {
-  transition: transform 120ms linear;
+  filter: drop-shadow(0 3px 4px rgb(22 24 29 / 0.3));
   will-change: transform;
 }
 
@@ -105,11 +181,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rx-pulse {
+  .rx-pulse,
+  .rx-pin-dot::after {
     animation: none;
-  }
-  .rx-car {
-    transition: none;
   }
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { distance, inr, minutes, shortAddress } from './format';
-import { along, bearing, haversine, lerpHeading, pathLength, type LatLng } from './geo';
+import { along, bearing, haversine, lerpHeading, metersPerPixel, PathIndex, pathLength, type LatLng } from './geo';
 import { decodePolyline, encodePolyline } from './polyline';
 
 describe('polyline', () => {
@@ -66,5 +66,37 @@ describe('format', () => {
   it('shortens addresses', () => {
     expect(shortAddress('Chennai Central, Park Town, Chennai')).toBe('Chennai Central');
     expect(shortAddress(null)).toBe('Pinned location');
+  });
+});
+
+describe('PathIndex', () => {
+  // an L: 1 km north, then 1 km east
+  const corner: LatLng = [13.009, 80.2];
+  const path = new PathIndex([[13.0, 80.2], corner, [13.009, 80.20925]]);
+
+  it('finds points along the path, with the segment heading', () => {
+    expect(path.length).toBeGreaterThan(1990);
+    expect(path.length).toBeLessThan(2010);
+    const half = path.at(500);
+    expect(half.point[0]).toBeCloseTo(13.0045, 3);
+    expect(half.heading).toBeCloseTo(0, 0);
+    const later = path.at(1500);
+    expect(later.point[0]).toBeCloseTo(13.009, 4);
+    expect(later.heading).toBeCloseTo(90, 0);
+    expect(path.at(99_999).point).toEqual([13.009, 80.20925]);
+  });
+
+  it('projects a fix beside the road onto it', () => {
+    const fix: LatLng = [13.0045, 80.2002]; // ~20 m east of the first leg, halfway up
+    const { along, offset } = path.project(fix);
+    expect(along).toBeGreaterThan(480);
+    expect(along).toBeLessThan(520);
+    expect(offset).toBeGreaterThan(15);
+    expect(offset).toBeLessThan(30);
+  });
+
+  it('gives a metre-per-pixel scale that halves with every zoom level', () => {
+    expect(metersPerPixel(17, 0)).toBeCloseTo(0.597, 2);
+    expect(metersPerPixel(18, 13) / metersPerPixel(17, 13)).toBeCloseTo(0.5, 5);
   });
 });

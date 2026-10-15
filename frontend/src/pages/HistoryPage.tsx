@@ -4,23 +4,14 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { ridesApi } from '../api/endpoints';
 import { errorMessage } from '../api/http';
-import type { Ride, RideStatus } from '../api/types';
+import type { Ride } from '../api/types';
 import { useAuth } from '../auth/store';
 import { PaymentBadge } from '../components/PaymentPanel';
+import { RideStatusChip } from '../components/RideStatusChip';
 import { ErrorNote, Spinner } from '../components/ui';
 import { inr, rideTypeLabel, shortAddress, when } from '../lib/format';
 
 const PAGE = 15;
-
-const statusLook: Record<RideStatus, [string, string]> = {
-  REQUESTED: ['Finding driver', 'bg-auto/30'],
-  DRIVER_ASSIGNED: ['Driver coming', 'bg-auto/30'],
-  DRIVER_ARRIVED: ['Driver arrived', 'bg-auto/30'],
-  IN_PROGRESS: ['On trip', 'bg-sea-soft text-sea'],
-  COMPLETED: ['Completed', 'bg-go-soft text-go'],
-  CANCELLED: ['Cancelled', 'bg-signal-soft text-signal'],
-  NO_DRIVER_FOUND: ['No driver', 'bg-chalk text-slate'],
-};
 
 /** Past and current rides, newest first: the rider's bookings, or the driver's trips. */
 export function HistoryPage() {
@@ -45,7 +36,7 @@ export function HistoryPage() {
             </div>
           )}
           {rides.data?.items.map((r) => (
-            <RideRow key={r.id} ride={r} linkable={role === 'RIDER'} />
+            <RideRow key={r.id} ride={r} to={role === 'DRIVER' ? `/trips/${r.id}` : `/ride/${r.id}`} />
           ))}
         </div>
         {pages > 1 && (
@@ -66,11 +57,10 @@ export function HistoryPage() {
   );
 }
 
-function RideRow({ ride, linkable }: { ride: Ride; linkable: boolean }) {
-  const [label, cls] = statusLook[ride.status];
+function RideRow({ ride, to }: { ride: Ride; to: string }) {
   const fare = ride.status === 'COMPLETED' ? ride.finalFare : ride.status === 'CANCELLED' ? ride.cancellationFee : ride.estFare;
-  const body = (
-    <div className="flex items-center gap-3 rounded-xl bg-paper p-3 transition-shadow hover:shadow-[var(--shadow-float)]">
+  return (
+    <Link to={to} className="flex items-center gap-3 rounded-xl bg-paper p-3 transition-shadow hover:shadow-[var(--shadow-float)]">
       <div className="min-w-0 flex-1">
         <p className="truncate font-bold">
           {shortAddress(ride.pickup.address)} → {shortAddress(ride.drop.address)}
@@ -82,17 +72,11 @@ function RideRow({ ride, linkable }: { ride: Ride; linkable: boolean }) {
       <div className="flex flex-col items-end gap-1">
         <span className="font-mono font-bold tabular">{fare ? inr(fare) : '—'}</span>
         <span className="flex gap-1">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${cls}`}>{label}</span>
+          <RideStatusChip status={ride.status} />
           <PaymentBadge status={ride.paymentStatus} />
         </span>
       </div>
-    </div>
-  );
-  return linkable ? (
-    <Link to={`/ride/${ride.id}`} className="block rounded-xl">
-      {body}
+      <ChevronRight className="size-4 shrink-0 text-slate" aria-hidden />
     </Link>
-  ) : (
-    body
   );
 }

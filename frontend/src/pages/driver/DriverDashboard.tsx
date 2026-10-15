@@ -4,13 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { driversApi, placesApi, ridesApi } from '../../api/endpoints';
 import { ApiError, errorMessage } from '../../api/http';
 import type { DriverProfile, Offer, OfferMessage, Ride } from '../../api/types';
+import { RealisticButton, RealisticHud, TripProgress } from '../../components/Realistic';
 import { toast } from '../../components/toastStore';
 import { Button, ErrorNote, Eyebrow, Meter, Plate, Sheet, Spinner } from '../../components/ui';
 import { config } from '../../config';
 import { distance, inr, rideTypeLabel, shortAddress } from '../../lib/format';
-import { haversine, type LatLng } from '../../lib/geo';
+import { haversine, PathIndex, type LatLng } from '../../lib/geo';
 import { decodePolyline } from '../../lib/polyline';
 import { AnimatedCar, BaseMap, DropPin, FitTo, MapClicks, PickupPin, RouteLine } from '../../map/MapView';
+import { useRealistic } from '../../map/useRealistic';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
 import { realtime } from '../../realtime/stomp';
 import { Onboarding } from './Onboarding';
@@ -82,6 +84,8 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
   const [offer, setOffer] = useState<Offer | null>(null);
   const [offerBusy, setOfferBusy] = useState<'accept' | 'reject' | null>(null);
   const [offerError, setOfferError] = useState('');
+  const [refit, setRefit] = useState(0);
+  const rx = useRealistic(online);
 
   const rideId = profile.currentRideId;
   const ride = useQuery({ queryKey: ['ride', rideId], queryFn: () => ridesApi.get(rideId!), enabled: !!rideId });
@@ -104,6 +108,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
     if (!legStart || !target || legStart.leg !== leg || !route.data) return null;
     return route.data.polyline ? decodePolyline(route.data.polyline) : [legStart.from, [target.lat, target.lng]];
   }, [route.data, legStart, target, leg]);
+  const pathIndex = useMemo(() => (routePoints && routePoints.length > 1 ? new PathIndex(routePoints) : null), [routePoints]);
 
   const sim = useSimulatedPosition(last, simulate ? routePoints : null, speedKmh);
   const lastLat = last?.[0];
@@ -189,48 +194,98 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
     return pts;
   }, [leg, hasPos]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const progress = pathIndex && pos && r?.status !== 'DRIVER_ARRIVED' && pathIndex.length > 0 ? pathIndex.project([pos.lat, pos.lng]).along / pathIndex.length : null;
+  const legEnd = r ? (r.status === 'IN_PROGRESS' ? r.drop : r.pickup) : null;
+  const away = legEnd && pos ? haversine([pos.lat, pos.lng], [legEnd.lat, legEnd.lng]) : null;
+
   return (
     <>
-      <BaseMap center={last ?? undefined}>
+      <BaseMap center={last ?? undefined} realistic={rx.active} night={rx.night}>
         {simulate && !r && <MapClicks onClick={sim.moveTo} />}
         {r && r.status !== 'IN_PROGRESS' && <PickupPin at={[r.pickup.lat, r.pickup.lng]} />}
         {r && r.status === 'IN_PROGRESS' && <DropPin at={[r.drop.lat, r.drop.lng]} />}
-        {routePoints && <RouteLine polyline={route.data?.polyline} fallback={routePoints} />}
-        {pos && <AnimatedCar lat={pos.lat} lng={pos.lng} heading={pos.heading} glideMs={simulate ? 950 : 1500} />}
-        <FitTo points={fit} />
+        {routePoints && <RouteLine polyline={route.data?.polyline} fallback={routePoints} progress={progress} />}
+        {pos && (
+          <AnimatedCar
+            lat={pos.lat}
+            lng={pos.lng}
+            heading={pos.heading}
+            speed={pos.speed}
+            glideMs={simulate ? 1050 : 3100}
+            route={routePoints}
+            type={profile.vehicleType}
+            follow={rx.following}
+            onFollowLost={rx.stopFollowing}
+            label="Your car"
+          />
+        )}
+        <FitTo points={fit} refit={refit} />
       </BaseMap>
-      <Sheet>
-        <div className="space-y-4">
-          <StatusBar profile={profile} online={online} busy={toggle.isPending} onToggle={() => toggle.mutate()} />
-          <ErrorNote>{toggle.error && errorMessage(toggle.error)}</ErrorNote>
-          {!simulate && online && gps.error && <ErrorNote>{gps.error}</ErrorNote>}
-
+      {online && !rx.active && <RealisticButton onClick={rx.enter} />}
+      {rx.active ? (
+        <RealisticHud
+          eyebrow={!r ? 'Online' : r.status === 'DRIVER_ASSIGNED' ? 'To pickup' : r.status === 'DRIVER_ARRIVED' ? 'At pickup' : 'To drop'}
+          value={!r ? 'LIVE' : r.status === 'DRIVER_ARRIVED' ? 'WAIT' : away == null ? '···' : distance(away).replace(/ (m|km)$/, '')}
+          unit={!r || r.status === 'DRIVER_ARRIVED' || away == null ? undefined : away < 1000 ? 'm' : 'km'}
+          sub={r && legEnd ? `${shortAddress(legEnd.address)} · ${inr(r.estFare)}` : 'Waiting for ride requests'}
+          speedKmh={pos?.speed != null ? pos.speed * 3.6 : 0}
+          following={rx.following}
+          onFollow={rx.toggleFollow}
+          onOverview={() => {
+            rx.stopFollowing();
+            setRefit((n) => n + 1);
+          }}
+          night={rx.night}
+          onNight={rx.toggleNight}
+          onExit={rx.exit}
+        >
           {r ? (
-            <TripPanel ride={r} pos={pos} />
-          ) : (
-            <>
-              {online ? (
-                <div className="flex items-center gap-3 rounded-xl bg-chalk p-3">
-                  <span className="relative grid size-3 place-items-center" aria-hidden>
-                    <span className="rx-pulse absolute size-3 rounded-full bg-go" />
-                    <span className="size-3 rounded-full bg-go" />
-                  </span>
-                  <p className="text-sm">
-                    <strong>You're online.</strong> Ride requests near you will pop up here.
-                  </p>
-                </div>
-              ) : (
-                <p className="text-sm text-slate">Go online to start getting ride requests.</p>
+            <div className="space-y-3">
+              {r.status === 'IN_PROGRESS' && progress != null && (
+                <TripProgress progress={progress} from={shortAddress(r.pickup.address)} to={shortAddress(r.drop.address)} />
               )}
-              <Earnings />
-            </>
+              <TripActions ride={r} compact />
+            </div>
+          ) : (
+            <p className="text-sm">
+              <strong>You're online.</strong> Ride requests near you pop up here.
+            </p>
           )}
+        </RealisticHud>
+      ) : (
+        <Sheet>
+          <div className="space-y-4">
+            <StatusBar profile={profile} online={online} busy={toggle.isPending} onToggle={() => toggle.mutate()} />
+            <ErrorNote>{toggle.error && errorMessage(toggle.error)}</ErrorNote>
+            {!simulate && online && gps.error && <ErrorNote>{gps.error}</ErrorNote>}
 
-          {config.simulator && (
-            <SimulatorControls on={simulate} onChange={setSim} speed={speedKmh} onSpeed={setSpeedKmh} driving={!!routePoints} />
-          )}
-        </div>
-      </Sheet>
+            {r ? (
+              <TripPanel ride={r} pos={pos} away={away} progress={progress} />
+            ) : (
+              <>
+                {online ? (
+                  <div className="flex items-center gap-3 rounded-xl bg-chalk p-3">
+                    <span className="relative grid size-3 place-items-center" aria-hidden>
+                      <span className="rx-pulse absolute size-3 rounded-full bg-go" />
+                      <span className="size-3 rounded-full bg-go" />
+                    </span>
+                    <p className="text-sm">
+                      <strong>You're online.</strong> Ride requests near you will pop up here.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate">Go online to start getting ride requests.</p>
+                )}
+                <Earnings />
+              </>
+            )}
+
+            {config.simulator && (
+              <SimulatorControls on={simulate} onChange={setSim} speed={speedKmh} onSpeed={setSpeedKmh} driving={!!routePoints} />
+            )}
+          </div>
+        </Sheet>
+      )}
       {offer && profile.status === 'AVAILABLE' && (
         <OfferModal offer={offer} busy={offerBusy} error={offerError} onAccept={() => respond(true)} onReject={() => respond(false)} />
       )}
@@ -271,23 +326,8 @@ function StatusBar({ profile, online, busy, onToggle }: { profile: DriverProfile
   );
 }
 
-function TripPanel({ ride, pos }: { ride: Ride; pos: Position | null }) {
-  const queryClient = useQueryClient();
-  const [otp, setOtp] = useState('');
-  const done = (updated: Ride) => {
-    queryClient.setQueryData(['ride', ride.id], updated);
-    void queryClient.invalidateQueries({ queryKey: ['driver', 'me'] });
-    void queryClient.invalidateQueries({ queryKey: ['rides'] });
-  };
-  const arrived = useMutation({ mutationFn: () => ridesApi.arrived(ride.id), onSuccess: done });
-  const start = useMutation({ mutationFn: () => ridesApi.start(ride.id, otp), onSuccess: done });
-  // the "Trip completed" notification comes from the server
-  const complete = useMutation({ mutationFn: () => ridesApi.complete(ride.id), onSuccess: done });
-  const cancel = useMutation({ mutationFn: () => ridesApi.cancel(ride.id, 'Cancelled by driver'), onSuccess: done });
-  const error = arrived.error ?? start.error ?? complete.error ?? cancel.error;
-
+function TripPanel({ ride, pos, away, progress }: { ride: Ride; pos: Position | null; away: number | null; progress: number | null }) {
   const target = ride.status === 'IN_PROGRESS' ? ride.drop : ride.pickup;
-  const away = pos ? haversine([pos.lat, pos.lng], [target.lat, target.lng]) : null;
   const label = ride.status === 'DRIVER_ASSIGNED' ? 'To pickup' : ride.status === 'DRIVER_ARRIVED' ? 'At pickup' : 'To drop';
 
   return (
@@ -299,6 +339,9 @@ function TripPanel({ ride, pos }: { ride: Ride; pos: Position | null }) {
         tone={ride.status === 'DRIVER_ARRIVED' ? 'go' : 'auto'}
         sub={`${shortAddress(target.address)} · ${inr(ride.estFare)}`}
       />
+      {ride.status === 'IN_PROGRESS' && progress != null && (
+        <TripProgress progress={progress} from={shortAddress(ride.pickup.address)} to={shortAddress(ride.drop.address)} />
+      )}
       <div className="space-y-2 text-sm">
         <Eyebrow>{rideTypeLabel[ride.rideType]} trip</Eyebrow>
         <p className="flex items-start gap-3">
@@ -318,7 +361,31 @@ function TripPanel({ ride, pos }: { ride: Ride; pos: Position | null }) {
       >
         <Navigation className="size-4" aria-hidden /> Turn-by-turn directions
       </a>
+      <TripActions ride={ride} />
+    </div>
+  );
+}
 
+/** The trip's next step (arrived, start with the PIN, complete), and cancelling, which asks first. */
+function TripActions({ ride, compact = false }: { ride: Ride; compact?: boolean }) {
+  const queryClient = useQueryClient();
+  const [otp, setOtp] = useState('');
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const done = (updated: Ride) => {
+    queryClient.setQueryData(['ride', ride.id], updated);
+    void queryClient.invalidateQueries({ queryKey: ['driver', 'me'] });
+    void queryClient.invalidateQueries({ queryKey: ['rides'] });
+  };
+  const arrived = useMutation({ mutationFn: () => ridesApi.arrived(ride.id), onSuccess: done });
+  const start = useMutation({ mutationFn: () => ridesApi.start(ride.id, otp), onSuccess: done });
+  // the "Trip completed" notification comes from the server
+  const complete = useMutation({ mutationFn: () => ridesApi.complete(ride.id), onSuccess: done });
+  const cancel = useMutation({ mutationFn: () => ridesApi.cancel(ride.id, 'Cancelled by driver'), onSuccess: done });
+  const error = arrived.error ?? start.error ?? complete.error ?? cancel.error;
+  const otpId = compact ? 'otp-hud' : 'otp';
+
+  return (
+    <div className={compact ? 'space-y-2' : 'space-y-4'}>
       <ErrorNote>{error && errorMessage(error)}</ErrorNote>
 
       {ride.status === 'DRIVER_ASSIGNED' && (
@@ -334,12 +401,12 @@ function TripPanel({ ride, pos }: { ride: Ride; pos: Position | null }) {
             start.mutate();
           }}
         >
-          <label className="block text-sm font-bold" htmlFor="otp">
+          <label className="block text-sm font-bold" htmlFor={otpId}>
             Ask the rider for their 4-digit PIN
           </label>
           <div className="flex gap-2">
             <input
-              id="otp"
+              id={otpId}
               inputMode="numeric"
               autoComplete="one-time-code"
               pattern="\d{4}"
@@ -360,11 +427,24 @@ function TripPanel({ ride, pos }: { ride: Ride; pos: Position | null }) {
           Complete trip
         </Button>
       )}
-      {ride.status !== 'IN_PROGRESS' && (
-        <button className="text-sm font-bold text-signal underline underline-offset-4" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
-          Cancel this ride
-        </button>
-      )}
+      {ride.status !== 'IN_PROGRESS' &&
+        (confirmCancel ? (
+          <div className="space-y-2 rounded-xl bg-signal-soft p-3">
+            <p className="text-sm font-bold">Cancel this ride? The rider will have to book again.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="quiet" onClick={() => setConfirmCancel(false)}>
+                Keep ride
+              </Button>
+              <Button variant="danger" busy={cancel.isPending} onClick={() => cancel.mutate()}>
+                Yes, cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="text-sm font-bold text-signal underline underline-offset-4" onClick={() => setConfirmCancel(true)}>
+            Cancel this ride
+          </button>
+        ))}
     </div>
   );
 }

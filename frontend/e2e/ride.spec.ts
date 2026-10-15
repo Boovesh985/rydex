@@ -38,13 +38,14 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
   const rider = await register(request, 'RIDER');
   await page.goto('/login');
   await page.getByLabel('Email').fill(rider.email);
-  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: 'Where to?' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Pickup' })).not.toHaveValue('');
 
-  // drop: tap the map south-east of the pickup
-  const map = page.locator('.leaflet-container');
+  // drop: tap the map south-east of the pickup, once the map is up (the pickup pin is on it)
+  await expect(page.locator('.rx-pin-pickup')).toBeVisible();
+  const map = page.locator('.maplibregl-canvas');
   const box = (await map.boundingBox())!;
   await page.getByRole('combobox', { name: 'Drop' }).focus();
   await map.click({ position: { x: box.width * 0.85, y: box.height * 0.85 } });
@@ -78,6 +79,13 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
   await expect(page.getByRole('status', { name: /Your driver is here/ })).toBeVisible();
   expect((await request.post(`/api/rides/${rideId}/start`, { headers: auth(driver.token), data: { otp: pin } })).ok()).toBe(true);
   await expect(page.getByRole('status', { name: /On the way/ })).toBeVisible();
+
+  // realistic mode: 3D buildings, the 3D car and a camera that follows it, then back to 2D
+  await page.getByRole('button', { name: 'Realistic 3D' }).click();
+  await expect(page.getByRole('button', { name: 'Exit realistic mode' })).toBeVisible();
+  await expect(page.getByRole('status', { name: /On the way/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Exit realistic mode' }).click();
+  await expect(page.getByRole('button', { name: 'Realistic 3D' })).toBeVisible();
   expect((await request.post(`/api/rides/${rideId}/complete`, { headers: auth(driver.token) })).ok()).toBe(true);
 
   await expect(page.getByRole('status', { name: /You have arrived: ₹\d+/ })).toBeVisible();

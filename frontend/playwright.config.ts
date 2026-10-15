@@ -17,7 +17,8 @@ export default defineConfig({
     geolocation: { latitude: 13.0827, longitude: 80.2707 },
     permissions: ['geolocation'],
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // the maps are WebGL: headless Chromium without a GPU draws them with SwiftShader
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] } } }],
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : { command: 'npm run dev', url: 'http://localhost:5173', reuseExistingServer: true, timeout: 60_000 },

@@ -80,3 +80,26 @@ describe('api client', () => {
     expect(await api('/api/drivers/me/offer')).toBeUndefined();
   });
 });
+
+describe('refresh across tabs', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useAuth.getState().signOut();
+  });
+
+  it('uses the tokens another tab already refreshed instead of replaying a used refresh token', async () => {
+    useAuth.getState().signIn({ accessToken: 'old', refreshToken: 'r1', tokenType: 'Bearer', expiresIn: 30, user });
+    // another tab traded r1 for r2 and stored the new pair
+    const stored = JSON.parse(localStorage.getItem('rydex.session')!);
+    stored.state.session = { ...stored.state.session, accessToken: 'from-other-tab', refreshToken: 'r2', expiresAt: Date.now() + 900_000 };
+    localStorage.setItem('rydex.session', JSON.stringify(stored));
+    const fetch = vi.fn().mockResolvedValue(json(200, { ok: true }));
+    vi.stubGlobal('fetch', fetch);
+
+    await api('/api/me');
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe('/api/me');
+    expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer from-other-tab');
+  });
+});

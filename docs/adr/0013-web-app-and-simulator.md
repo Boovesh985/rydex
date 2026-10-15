@@ -1,6 +1,6 @@
 # 13. Web app and driver simulator
 
-Date: 2026-10-14 · Status: Accepted
+Date: 2026-10-14 · Status: Accepted (maps superseded by ADR 0015: MapLibre vector maps and the realistic 3D mode replace Leaflet)
 
 ## Context
 Phase 6 adds the React web app (master prompt §11) and the driver simulator (§12). The goal: a full ride

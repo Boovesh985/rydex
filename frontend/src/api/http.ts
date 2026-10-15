@@ -18,25 +18,40 @@ export class ApiError extends Error {
 
 let refreshing: Promise<string | null> | null = null;
 
-/** Trades the refresh token for a new pair; one refresh at a time, shared by concurrent callers. */
+/** Runs `task` holding a lock shared by every tab of this site, so two tabs never refresh at once. */
+function acrossTabs<T>(task: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  return locks ? (locks.request('rydex.refresh', task) as Promise<T>) : task();
+}
+
+/**
+ * Trades the refresh token for a new pair; one refresh at a time, shared by concurrent callers and
+ * by every open tab. Refresh tokens rotate and a reused one revokes all of the user's sessions, so a
+ * tab must never send a token another tab has already traded: after waiting for the lock it first
+ * picks up whatever another tab stored meanwhile.
+ */
 export function refreshSession(): Promise<string | null> {
-  const session = useAuth.getState().session;
-  if (!session) return Promise.resolve(null);
-  refreshing ??= fetch(`${config.apiUrl}/api/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken: session.refreshToken }),
+  const stale = useAuth.getState().session;
+  if (!stale) return Promise.resolve(null);
+  refreshing ??= acrossTabs(async () => {
+    await useAuth.persist.rehydrate();
+    const session = useAuth.getState().session;
+    if (!session) return null;
+    if (session.refreshToken !== stale.refreshToken) return session.accessToken; // another tab refreshed
+    const res = await fetch(`${config.apiUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+    if (!res.ok) {
+      // 401: the refresh token was revoked or expired. Anything else: keep the session and retry later.
+      if (res.status === 401 || res.status === 400) useAuth.getState().signOut();
+      return null;
+    }
+    const body = (await res.json()) as AuthResponse;
+    useAuth.getState().signIn(body);
+    return body.accessToken;
   })
-    .then(async (res) => {
-      if (!res.ok) {
-        // 401: the refresh token was revoked or expired. Anything else: keep the session and retry later.
-        if (res.status === 401 || res.status === 400) useAuth.getState().signOut();
-        return null;
-      }
-      const body = (await res.json()) as AuthResponse;
-      useAuth.getState().signIn(body);
-      return body.accessToken;
-    })
     .catch(() => null)
     .finally(() => {
       refreshing = null;

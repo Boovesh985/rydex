@@ -1,5 +1,5 @@
-import { LoaderCircle } from 'lucide-react';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
+import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 
 type Variant = 'primary' | 'dark' | 'quiet' | 'danger';
 
@@ -47,6 +47,43 @@ export function Field({ label, hint, id, className = '', ...rest }: FieldProps) 
       />
       {hint && <span className="mt-1 block text-xs text-slate">{hint}</span>}
     </label>
+  );
+}
+
+/** A password input with a button that shows or hides what was typed. */
+export function PasswordField({ label, hint, id, className = '', children, ...rest }: Omit<FieldProps, 'type'> & { children?: ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const inputId = id ?? `f-${label.toLowerCase().replace(/\W+/g, '-')}`;
+  return (
+    <div>
+      <label htmlFor={inputId} className="mb-1 block text-sm font-bold text-ink">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={inputId}
+          {...rest}
+          type={visible ? 'text' : 'password'}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className={`h-12 w-full rounded-xl border border-mist bg-paper pr-12 pl-4 text-base text-ink placeholder:text-slate/70 focus:border-ink focus:outline-none ${className}`}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? 'Hide password' : 'Show password'}
+          aria-pressed={visible}
+          aria-controls={inputId}
+          title={visible ? 'Hide password' : 'Show password'}
+          className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate hover:text-ink"
+        >
+          {visible ? <EyeOff className="size-5" aria-hidden /> : <Eye className="size-5" aria-hidden />}
+        </button>
+      </div>
+      {hint && <span className="mt-1 block text-xs text-slate">{hint}</span>}
+      {children}
+    </div>
   );
 }
 

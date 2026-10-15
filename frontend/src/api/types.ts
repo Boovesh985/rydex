@@ -221,6 +221,14 @@ export interface Grid {
   cells: GridCell[];
 }
 
+export interface PathPoint {
+  lat: number;
+  lng: number;
+  speed: number | null;
+  heading: number | null;
+  at: string;
+}
+
 export interface LiveDriver {
   driverId: string;
   lat: number;

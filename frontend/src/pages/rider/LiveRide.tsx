@@ -6,11 +6,15 @@ import { driversApi, placesApi, ridesApi, trackingApi } from '../../api/endpoint
 import { ApiError, errorMessage } from '../../api/http';
 import { ACTIVE_STATUSES, type DriverCard, type LiveLocation, type Ride } from '../../api/types';
 import { PaymentPanel } from '../../components/PaymentPanel';
+import { RealisticButton, RealisticHud, TripProgress } from '../../components/Realistic';
 import { RideTimeline } from '../../components/RideTimeline';
 import { Button, ErrorNote, Eyebrow, Meter, PinTiles, Plate, Sheet, Spinner } from '../../components/ui';
 import { distance, inr, minutes, rideTypeLabel, shortAddress } from '../../lib/format';
-import type { LatLng } from '../../lib/geo';
+import { PathIndex, type LatLng } from '../../lib/geo';
+import { decodePolyline } from '../../lib/polyline';
 import { AnimatedCar, BaseMap, DropPin, FitTo, PickupPin, RouteLine } from '../../map/MapView';
+import { useRealistic } from '../../map/useRealistic';
+import { newest } from '../../lib/geo';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
 
 const TRACKED = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
@@ -18,8 +22,14 @@ const TRACKED = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
 /** The rider's ride from booking to payment: live driver, ETA, PIN, cancel, pay. */
 export function LiveRide() {
   const { rideId = '' } = useParams();
+  // a different ride is a fresh screen: no live position carried over from the last one
+  return <RideScreen key={rideId} rideId={rideId} />;
+}
+
+function RideScreen({ rideId }: { rideId: string }) {
   const queryClient = useQueryClient();
   const [live, setLive] = useState<LiveLocation | null>(null);
+  const [refit, setRefit] = useState(0);
 
   const ride = useQuery({
     queryKey: ['ride', rideId],
@@ -29,14 +39,18 @@ export function LiveRide() {
   });
   const r = ride.data;
   const tracked = !!r && TRACKED.includes(r.status);
+  const active = !!r && ACTIVE_STATUSES.includes(r.status);
+  const rx = useRealistic(active);
 
   const initial = useQuery({
     queryKey: ['location', rideId],
     queryFn: () => trackingApi.location(rideId),
     enabled: tracked,
     retry: false,
+    // positions a driver sends over REST (their socket down) are not pushed: read them now and then
+    refetchInterval: 10_000,
   });
-  const location = live ?? initial.data ?? null;
+  const location = newest(live, initial.data);
 
   useSubscription<LiveLocation>(tracked ? `/topic/rides/${rideId}/location` : null, setLive);
   useOnReconnect(() => {
@@ -61,6 +75,13 @@ export function LiveRide() {
     enabled: !!routeFrom && !!routeTo && !!r && r.status !== 'COMPLETED' && r.status !== 'CANCELLED',
     staleTime: Infinity,
   });
+  const routePoints = useMemo<LatLng[] | null>(() => {
+    if (!route.data || !routeFrom || !routeTo) return null;
+    return route.data.polyline ? decodePolyline(route.data.polyline) : [[routeFrom.lat, routeFrom.lng], [routeTo.lat, routeTo.lng]];
+    // the route only changes with its query
+  }, [route.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pathIndex = useMemo(() => (routePoints && routePoints.length > 1 ? new PathIndex(routePoints) : null), [routePoints]);
+  const progress = pathIndex && location && tracked && pathIndex.length > 0 ? pathIndex.project([location.lat, location.lng]).along / pathIndex.length : null;
 
   const hasLocation = !!location;
   const fit = useMemo<LatLng[]>(() => {
@@ -91,30 +112,107 @@ export function LiveRide() {
     );
   }
 
+  const status = rideStatus(r, tracked ? location : null);
   return (
     <>
-      <BaseMap>
+      <BaseMap realistic={rx.active} night={rx.night}>
         <PickupPin at={[r.pickup.lat, r.pickup.lng]} />
         {r.status !== 'DRIVER_ASSIGNED' && r.status !== 'DRIVER_ARRIVED' && <DropPin at={[r.drop.lat, r.drop.lng]} />}
-        {route.data && routeFrom && routeTo && (
-          <RouteLine polyline={route.data.polyline} fallback={[[routeFrom.lat, routeFrom.lng], [routeTo.lat, routeTo.lng]]} />
+        {routePoints && <RouteLine polyline={route.data?.polyline} fallback={routePoints} progress={progress} />}
+        {tracked && location && (
+          <AnimatedCar
+            lat={location.lat}
+            lng={location.lng}
+            heading={location.heading}
+            speed={location.speed}
+            route={r.status === 'DRIVER_ARRIVED' ? null : routePoints}
+            type={driver.data?.vehicleType ?? r.rideType}
+            follow={rx.following}
+            onFollowLost={rx.stopFollowing}
+          />
         )}
-        {tracked && location && <AnimatedCar lat={location.lat} lng={location.lng} heading={location.heading} />}
-        <FitTo points={fit} />
+        <FitTo points={fit} refit={refit} />
       </BaseMap>
-      <Sheet>
-        <RideSheet ride={r} location={tracked ? location : null} driver={driver.data ?? null} />
-      </Sheet>
+      {active && !rx.active && <RealisticButton onClick={rx.enter} />}
+      {rx.active ? (
+        <RealisticHud
+          eyebrow={status.label}
+          value={status.value}
+          unit={status.unit}
+          sub={status.sub}
+          speedKmh={tracked && location?.speed != null ? location.speed * 3.6 : null}
+          following={rx.following}
+          onFollow={rx.toggleFollow}
+          onOverview={() => {
+            rx.stopFollowing();
+            setRefit((n) => n + 1);
+          }}
+          night={rx.night}
+          onNight={rx.toggleNight}
+          onExit={rx.exit}
+        >
+          <div className="space-y-3">
+            {driver.data && tracked ? <DriverPanel driver={driver.data} /> : <p className="text-sm font-bold">{rideTypeLabel[r.rideType]} · {inr(r.estFare)}</p>}
+            {r.status === 'IN_PROGRESS' && progress != null && (
+              <TripProgress progress={progress} from={shortAddress(r.pickup.address)} to={shortAddress(r.drop.address)} />
+            )}
+            {r.otp && (r.status === 'DRIVER_ASSIGNED' || r.status === 'DRIVER_ARRIVED') && (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-bold">Your ride PIN</p>
+                <PinTiles pin={r.otp} />
+              </div>
+            )}
+          </div>
+        </RealisticHud>
+      ) : (
+        <Sheet>
+          <RideSheet ride={r} location={tracked ? location : null} driver={driver.data ?? null} progress={progress} />
+        </Sheet>
+      )}
     </>
   );
 }
 
-function RideSheet({ ride, location, driver }: { ride: Ride; location: LiveLocation | null; driver: DriverCard | null }) {
+interface StatusView {
+  label: string;
+  value: string;
+  unit?: string;
+  sub?: string;
+  tone?: 'auto' | 'go';
+}
+
+/** The one number that matters now, for the meter and for realistic mode's capsule. */
+function rideStatus(ride: Ride, location: LiveLocation | null): StatusView {
+  switch (ride.status) {
+    case 'REQUESTED':
+      return { label: 'Finding your driver', value: '···', sub: `Asking the nearest ${rideTypeLabel[ride.rideType]} drivers` };
+    case 'DRIVER_ASSIGNED':
+      return location
+        ? { label: 'Driver arriving', value: minutes(location.etaS).replace(' min', ''), unit: 'min', sub: `${distance(location.distanceM)} away` }
+        : { label: 'Driver on the way', value: '···', sub: 'Waiting for their location' };
+    case 'DRIVER_ARRIVED':
+      return { label: 'Your driver is here', value: 'NOW', tone: 'go', sub: `At ${shortAddress(ride.pickup.address)}` };
+    case 'IN_PROGRESS':
+      return location && location.phase === 'TO_DROP'
+        ? { label: 'On the way', value: minutes(location.etaS).replace(' min', ''), unit: 'min', sub: `${distance(location.distanceM)} to ${shortAddress(ride.drop.address)}` }
+        : { label: 'On the way', value: '···', sub: `To ${shortAddress(ride.drop.address)}` };
+    case 'COMPLETED':
+      return { label: 'You have arrived', value: inr(ride.finalFare ?? ride.estFare), tone: 'go', sub: 'Trip fare' };
+    default:
+      return { label: 'Ride over', value: '—' };
+  }
+}
+
+function RideSheet({ ride, location, driver, progress }: { ride: Ride; location: LiveLocation | null; driver: DriverCard | null; progress: number | null }) {
   const navigate = useNavigate();
   const s = ride.status;
   return (
     <div className="space-y-4">
       <StatusMeter ride={ride} location={location} />
+
+      {s === 'IN_PROGRESS' && progress != null && (
+        <TripProgress progress={progress} from={shortAddress(ride.pickup.address)} to={shortAddress(ride.drop.address)} />
+      )}
 
       {driver && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED' || s === 'IN_PROGRESS') && <DriverPanel driver={driver} />}
 
@@ -135,11 +233,7 @@ function RideSheet({ ride, location, driver }: { ride: Ride; location: LiveLocat
       {ACTIVE_STATUSES.includes(s) && s !== 'IN_PROGRESS' && <CancelRide ride={ride} />}
 
       {(s === 'COMPLETED' || s === 'CANCELLED' || s === 'NO_DRIVER_FOUND') && (
-        <Button
-          block
-          variant={s === 'NO_DRIVER_FOUND' ? 'primary' : 'dark'}
-          onClick={() => navigate('/ride')}
-        >
+        <Button block variant={s === 'NO_DRIVER_FOUND' ? 'primary' : 'dark'} onClick={() => navigate('/ride')}>
           {s === 'NO_DRIVER_FOUND' ? 'Try again' : 'Book another ride'}
         </Button>
       )}
@@ -150,51 +244,37 @@ function RideSheet({ ride, location, driver }: { ride: Ride; location: LiveLocat
 }
 
 function StatusMeter({ ride, location }: { ride: Ride; location: LiveLocation | null }) {
-  switch (ride.status) {
-    case 'REQUESTED':
-      return (
-        <div className="space-y-2">
-          <Meter label="Finding your driver" value="···" sub={`Asking the nearest ${rideTypeLabel[ride.rideType]} drivers`} />
-          <div className="h-1 overflow-hidden rounded-full bg-mist" aria-hidden>
-            <div className="h-full w-1/3 animate-[rx-scan_1.4s_ease-in-out_infinite] rounded-full bg-auto motion-reduce:animate-none" />
-          </div>
-        </div>
-      );
-    case 'DRIVER_ASSIGNED':
-      return location ? (
-        <Meter label="Driver arriving" value={minutes(location.etaS).replace(' min', '')} unit="min" sub={`${distance(location.distanceM)} away`} />
-      ) : (
-        <Meter label="Driver on the way" value="···" sub="Waiting for their location" />
-      );
-    case 'DRIVER_ARRIVED':
-      return <Meter label="Your driver is here" value="NOW" tone="go" sub={`At ${shortAddress(ride.pickup.address)}`} />;
-    case 'IN_PROGRESS':
-      return location && location.phase === 'TO_DROP' ? (
-        <Meter label="On the way" value={minutes(location.etaS).replace(' min', '')} unit="min" sub={`${distance(location.distanceM)} to ${shortAddress(ride.drop.address)}`} />
-      ) : (
-        <Meter label="On the way" value="···" sub={`To ${shortAddress(ride.drop.address)}`} />
-      );
-    case 'COMPLETED':
-      return <Meter label="You have arrived" value={inr(ride.finalFare ?? ride.estFare)} tone="go" sub="Trip fare" />;
-    case 'CANCELLED':
-      return (
-        <div className="rounded-xl bg-signal-soft p-3">
-          <p className="font-display-wide font-black text-signal">Ride cancelled</p>
-          <p className="text-sm">
-            {ride.cancelledBy === 'RIDER' ? 'You cancelled' : 'Cancelled'}
-            {ride.cancelReason ? `: ${ride.cancelReason}` : '.'}
-            {(ride.cancellationFee ?? 0) > 0 && ` A cancellation fee of ${inr(ride.cancellationFee)} applies.`}
-          </p>
-        </div>
-      );
-    case 'NO_DRIVER_FOUND':
-      return (
-        <div className="rounded-xl bg-chalk p-3">
-          <p className="font-display-wide font-black">No drivers available</p>
-          <p className="text-sm text-slate">Every nearby driver was busy. You were not charged. Try again in a minute.</p>
-        </div>
-      );
+  if (ride.status === 'CANCELLED') {
+    return (
+      <div className="rounded-xl bg-signal-soft p-3">
+        <p className="font-display-wide font-black text-signal">Ride cancelled</p>
+        <p className="text-sm">
+          {ride.cancelledBy === 'RIDER' ? 'You cancelled' : 'Cancelled'}
+          {ride.cancelReason ? `: ${ride.cancelReason}` : '.'}
+          {(ride.cancellationFee ?? 0) > 0 && ` A cancellation fee of ${inr(ride.cancellationFee)} applies.`}
+        </p>
+      </div>
+    );
   }
+  if (ride.status === 'NO_DRIVER_FOUND') {
+    return (
+      <div className="rounded-xl bg-chalk p-3">
+        <p className="font-display-wide font-black">No drivers available</p>
+        <p className="text-sm text-slate">Every nearby driver was busy. You were not charged. Try again in a minute.</p>
+      </div>
+    );
+  }
+  const s = rideStatus(ride, location);
+  return (
+    <div className="space-y-2">
+      <Meter label={s.label} value={s.value} unit={s.unit} sub={s.sub} tone={s.tone} />
+      {ride.status === 'REQUESTED' && (
+        <div className="h-1 overflow-hidden rounded-full bg-mist" aria-hidden>
+          <div className="h-full w-1/3 animate-[rx-scan_1.4s_ease-in-out_infinite] rounded-full bg-auto motion-reduce:animate-none" />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DriverPanel({ driver }: { driver: DriverCard }) {

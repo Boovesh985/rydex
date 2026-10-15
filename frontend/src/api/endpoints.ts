@@ -11,6 +11,7 @@ import type {
   LiveLocation,
   Offer,
   Page,
+  PathPoint,
   Payment,
   Place,
   Ride,
@@ -60,6 +61,8 @@ export const ridesApi = {
     }),
   get: (id: string) => api<Ride>(`/api/rides/${id}`),
   list: (page = 0, size = 20, mine = true) => api<Page<Ride>>(`/api/rides?mine=${mine}&page=${page}&size=${size}`),
+  /** Admins: every ride, or only the ones in flight. */
+  all: (page = 0, size = 20, active = false) => api<Page<Ride>>(`/api/rides?mine=false&active=${active}&page=${page}&size=${size}`),
   cancel: (id: string, reason?: string) => api<Ride>(`/api/rides/${id}/cancel`, json({ reason })),
   arrived: (id: string) => api<Ride>(`/api/rides/${id}/arrived`, { method: 'POST' }),
   start: (id: string, otp: string) => api<Ride>(`/api/rides/${id}/start`, json({ otp })),
@@ -85,6 +88,8 @@ export const driversApi = {
 
 export const trackingApi = {
   location: (rideId: string) => api<LiveLocation>(`/api/tracking/rides/${rideId}/location`),
+  /** The driver's recorded path during the ride, oldest first. */
+  path: (rideId: string) => api<PathPoint[]>(`/api/tracking/rides/${rideId}/path`),
 };
 
 export const paymentsApi = {
