@@ -77,7 +77,7 @@ def test_endpoints_route_like_caddy():
 
 def test_any_number_of_drivers_gets_every_ride_type():
     order = seeded_order()
-    assert sorted(order) == list(range(1, 51))
+    assert sorted(order) == list(range(2, 51))  # driver01 is left for manual testing
     first = order[:5]
     assert any(n <= 30 for n in first) and any(31 <= n <= 42 for n in first) and any(n >= 43 for n in first)
 
@@ -86,7 +86,13 @@ def test_arguments():
     args = parse_args(["--drivers", "5", "--city-center", "12.99,80.17"])
     assert args.center == (12.99, 80.17)
     with pytest.raises(SystemExit):
-        parse_args(["--drivers", "51"])
+        parse_args(["--drivers", "50"])
+    with pytest.raises(SystemExit):
+        parse_args(["--riders", "60"])
+    city = parse_args(["--city"])
+    assert (city.drivers, city.riders, city.center) == (40, 30, (13.045, 80.245))
+    assert parse_args(["--city", "--riders", "5"]).riders == 5
+    assert parse_args([]).riders == 0
     with pytest.raises(SystemExit):
         parse_args(["--city-center", "chennai"])
 

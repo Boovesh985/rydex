@@ -130,12 +130,13 @@ class Session:
                     self.tokens = await self.api.login(self.email, self.password)
             return self.tokens.access
 
-    async def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    async def call(self, method: str, path: str, body: dict[str, Any] | None = None,
+                   headers: dict[str, str] | None = None) -> Any:
         """JSON body of a 2xx (None for 204); raises ApiError otherwise. Retries once after a refresh on 401."""
         for attempt in (1, 2):
             token = await self.token()
             res = await self.api.http.request(method, self.api.endpoints.url(path), json=body,
-                                              headers={"Authorization": f"Bearer {token}"})
+                                              headers={"Authorization": f"Bearer {token}", **(headers or {})})
             if res.status_code == 401 and attempt == 1 and self.tokens:
                 self.tokens.expires_at = 0  # force a refresh
                 continue
