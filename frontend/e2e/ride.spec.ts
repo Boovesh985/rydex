@@ -98,7 +98,7 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
 
   await expect(page.getByRole('status', { name: /You have arrived: ₹\d+/ })).toBeVisible();
   // mock provider: paid at once; Razorpay test mode: the rider is asked to pay
-  await expect(page.getByText('Paid').or(page.getByRole('button', { name: /^Pay ₹/ }))).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Paid', { exact: true }).or(page.getByRole('button', { name: /^Pay ₹/ }))).toBeVisible({ timeout: 30_000 });
 
   // and the ride is in the rider's history
   await page.getByRole('link', { name: 'Your rides' }).click();
