@@ -11,6 +11,9 @@
 #            arrived, an admin refund, and the rider notified at each step
 #   Phase 6  what the web app reads besides that: the rider's driver card, driving routes, admin
 #            KPIs and demand; and, if the frontend dev server runs, its proxy to every service
+#   Audit    encrypted accounts, password rules, lockout, admin rides in flight, trip paths
+#   City     the living city (ADR 0016): nearby cars without driver ids, NPC rides flagged
+# Stop the simulator first: its drivers can win this test's offers.
 #
 # Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081),
 # driver-service (:8082), tracking-service (:8083) and payment-service (:8084) running (see README).
@@ -571,6 +574,24 @@ $inFlight = Api GET "$RideUrl/api/rides?mine=false&active=true&size=100" $admin
 Check "admins list the rides in flight" ($inFlight.Status -eq 200 -and @($inFlight.Body.items | Where-Object { $_.status -in 'COMPLETED', 'CANCELLED', 'NO_DRIVER_FOUND' }).Count -eq 0) "$($inFlight.Body.total) in flight"
 $driverTrip = Api GET "$TrackingUrl/api/tracking/rides/$rideId/path" $driverToken
 Check "the driver reads their trip's driven path" ($driverTrip.Status -eq 200) "$(@($driverTrip.Body).Count) points"
+
+# ---------------------------------------------------------------- living city (ADR 0016)
+Section "Living city - nearby cars, NPC accounts"
+Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "AVAILABLE"; lat = 13.0831; lng = 80.2707 } | Out-Null
+$nearby = Api GET "$DriverUrl/api/drivers/nearby?lat=13.0827&lng=80.2707" $rider
+$closeBy = @($nearby.Body | Where-Object { $_.distanceM -lt 100 })
+Check "a rider sees the free cars around them" ($nearby.Status -eq 200 -and $closeBy.Count -ge 1) "$(@($nearby.Body).Count) cars within 3 km"
+Check "... with opaque ids, not who drives them" (($nearby.Body | ConvertTo-Json -Depth 5) -notmatch $profile.Body.id)
+Api PATCH "$DriverUrl/api/drivers/me/status" $driverToken @{ status = "OFFLINE" } | Out-Null
+# rider60: an NPC account the default city (--city: riders 2-31) leaves alone
+$npc = Login "rider60@rydex.dev"
+foreach ($open in @((Api GET "$RideUrl/api/rides?mine=true&size=5" $npc).Body.items | Where-Object { $_.status -in 'REQUESTED', 'DRIVER_ASSIGNED' })) {
+    Api POST "$RideUrl/api/rides/$($open.id)/cancel" $npc @{ reason = "smoke test" } | Out-Null
+}
+$npcRide = Api POST "$RideUrl/api/rides" $npc @{ pickup = $center; drop = $airport; rideType = "ECONOMY" } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
+Check "an NPC rider's ride is marked simulated (paid through the mock provider)" ($npcRide.Status -eq 201 -and $npcRide.Body.simulated -eq $true) "HTTP $($npcRide.Status)"
+if ($npcRide.Status -eq 201) { Api POST "$RideUrl/api/rides/$($npcRide.Body.id)/cancel" $npc @{ reason = "smoke test" } | Out-Null }
+Check "the manual tester's rides are not" ((Api GET "$RideUrl/api/rides/$rideId" $rider).Body.simulated -eq $false)
 
 # ---------------------------------------------------------------- summary
 Write-Host ""

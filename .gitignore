@@ -31,3 +31,6 @@ coverage/
 
 # JWT signing keys (generate with infra/scripts/gen-jwt-keys.sh)
 infra/keys/
+
+# Overpass downloads (infra/scripts/build-traffic-roads.py)
+.cache/

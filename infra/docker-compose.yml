@@ -64,6 +64,10 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
+      # one combined broker+controller on a busy laptop: a late heartbeat must not fence the broker
+      # (it then reloads every partition, burns CPU and misses the next one: NOT_COORDINATOR storms)
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: 30000
+      KAFKA_BROKER_HEARTBEAT_INTERVAL_MS: 3000
     ports:
       - "127.0.0.1:9092:9092"
     volumes:
