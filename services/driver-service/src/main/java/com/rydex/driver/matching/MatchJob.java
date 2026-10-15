@@ -74,6 +74,9 @@ public class MatchJob {
     @Column(name = "assigned_driver_id")
     private UUID assignedDriverId;
 
+    @Column(name = "simulated_rider", nullable = false)
+    private boolean simulatedRider;
+
     @Column(name = "due_at")
     private Instant dueAt;
 
@@ -113,6 +116,7 @@ public class MatchJob {
         j.estFare = ride.fare();
         j.estDistanceM = ride.estDistanceM() == null ? 0 : ride.estDistanceM();
         j.estDurationS = ride.estDurationS() == null ? 0 : ride.estDurationS();
+        j.simulatedRider = ride.bySimulatedRider();
         j.status = MatchJobStatus.SEARCHING;
         j.dueAt = now;
         Instant deadline = requestedAt.plus(searchTimeout);
@@ -182,7 +186,12 @@ public class MatchJob {
     /** The ride as it travels in events, with the given driver (null if none). */
     RidePayload toPayload(UUID driverId, String reason) {
         return new RidePayload(riderId, driverId, rideType, getPickup(), getDrop(), estFare,
-                estDistanceM, estDurationS, reason);
+                estDistanceM, estDurationS, reason, null, simulatedRider);
+    }
+
+    /** Whether the rider is an NPC of the living city (ADR 0016). */
+    public boolean isSimulatedRider() {
+        return simulatedRider;
     }
 
     public GeoPoint getPickup() {

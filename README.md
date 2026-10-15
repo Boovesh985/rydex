@@ -53,7 +53,10 @@ cd simulator; pip install -r requirements.txt; python simulate.py --city
 **Try a ride.**
 - **Book:** sign in as `rider1@rydex.dev` (the demo buttons fill it in). The free cars around you drive about on the map. Search or tap the map for a drop, pick a ride type and book.
 - **Ride:** a nearby automated driver accepts and drives to you. They wait at the pickup for your PIN, then start the trip and drive you to the drop. The car moves live on your map.
-- **Drive:** sign in as `driver01@rydex.dev` in a second browser (or a private window), switch on **Simulate driving** and go online.
+- **Drive:** sign in as `driver01@rydex.dev` in a second browser (or a private window), switch on **Simulate driving** and go online. Real people come first in matching:
+  - you get the offer for any automated rider's ride within 3 km before the automated drivers do;
+  - at the pickup, the automated rider "reads out" their PIN on your screen, and you type it in.
+- **Both sides yourself:** with driver01 online, rider1's rides go to you first (anywhere within 8 km), as long as you book driver01's ride type, Economy.
 - **Watch:** sign in as `admin@rydex.dev` for the operations map: the living city, the geohash grid matching uses, demand and KPIs, and every ride in flight (open one to watch it live).
 
 **Realistic 3D.** On the booking map, a live ride, the driver dashboard, a trip page or the operations map, press **Realistic 3D**:

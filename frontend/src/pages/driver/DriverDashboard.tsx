@@ -6,7 +6,7 @@ import { ApiError, errorMessage } from '../../api/http';
 import type { DriverProfile, Offer, OfferMessage, Ride } from '../../api/types';
 import { RealisticButton, RealisticHud, TripProgress } from '../../components/Realistic';
 import { toast } from '../../components/toastStore';
-import { Button, ErrorNote, Eyebrow, Meter, Plate, Sheet, Spinner } from '../../components/ui';
+import { Button, ErrorNote, Eyebrow, Meter, PinTiles, Plate, Sheet, Spinner } from '../../components/ui';
 import { config } from '../../config';
 import { distance, inr, rideTypeLabel, shortAddress } from '../../lib/format';
 import { haversine, type LatLng } from '../../lib/geo';
@@ -373,6 +373,21 @@ function TripPanel({ ride, pos, away, toPickup, progress }: { ride: Ride; pos: P
 }
 
 /**
+ * An NPC rider of the living city has no screen to show you: ride-service hands its PIN to you once
+ * you are at the pickup, as if the rider had read it out. You still type it in to start.
+ */
+function HeardPin({ pin, compact }: { pin: string; compact: boolean }) {
+  return (
+    <div role="group" aria-label="What your rider says" className="flex items-center gap-3 rounded-xl bg-paper p-3">
+      <p className="flex-1 text-sm">
+        <span className="font-bold">Your rider says:</span> "My PIN is {pin.split('').join(' ')}"
+      </p>
+      {!compact && <PinTiles pin={pin} />}
+    </div>
+  );
+}
+
+/**
  * The trip's next step (arrived, start with the rider's PIN, complete), and cancelling, which asks
  * first. Keyed by ride and status, so a step's error never outlives the step. "I've arrived" only
  * works near the pickup (ride-service checks it too, against the last position it was sent).
@@ -437,8 +452,9 @@ function TripActions({ ride, pos, toPickup, compact = false }: { ride: Ride; pos
             start.mutate();
           }}
         >
+          {ride.otp && <HeardPin pin={ride.otp} compact={compact} />}
           <label className="block text-sm font-bold" htmlFor={otpId}>
-            Ask the rider for the 4-digit PIN on their screen
+            {ride.otp ? 'Type the PIN your rider read out' : 'Ask the rider for the 4-digit PIN on their screen'}
           </label>
           <div className="flex gap-2">
             <input

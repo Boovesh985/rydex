@@ -15,3 +15,8 @@ SELECT ('00000000-0000-4000-8000-' || lpad((200 + g)::text, 12, '0'))::uuid,
        4.50 + ((g * 37) % 50) / 100.0
 FROM generate_series(1, 50) AS g
 ON CONFLICT DO NOTHING;
+
+-- The living city (ADR 0016): driver01 is the owner's to drive by hand; drivers 02-50 are NPCs.
+UPDATE drivers SET simulated = true
+WHERE user_id BETWEEN '00000000-0000-4000-8000-000000000202' AND '00000000-0000-4000-8000-000000000250'
+  AND NOT simulated;

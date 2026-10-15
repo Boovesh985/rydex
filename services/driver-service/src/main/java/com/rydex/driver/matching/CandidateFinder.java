@@ -43,7 +43,11 @@ public class CandidateFinder {
 
     /** Up to {@code candidatesPerSearch} drivers within {@code radiusKm}, nearest first, skipping {@code exclude}. */
     public List<Candidate> within(RideType type, GeoPoint pickup, double radiusKm, Collection<UUID> exclude) {
-        int limit = props.candidatesPerSearch();
+        return within(type, pickup, radiusKm, exclude, props.candidatesPerSearch());
+    }
+
+    /** Up to {@code limit} drivers within {@code radiusKm}, nearest first, skipping {@code exclude}. */
+    public List<Candidate> within(RideType type, GeoPoint pickup, double radiusKm, Collection<UUID> exclude, int limit) {
         return search(type, pickup, radiusKm, limit + exclude.size()).stream()
                 .filter(c -> !exclude.contains(c.driverId()))
                 .limit(limit)

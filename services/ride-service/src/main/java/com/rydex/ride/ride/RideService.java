@@ -155,7 +155,7 @@ public class RideService {
         ride.markDriverArrived(now);
         record(ride, from, driver.actor(), now);
         publish(EventType.DRIVER_ARRIVED, ride, null);
-        return RideView.of(ride, null, null);
+        return RideView.of(ride, otpFor(driver, ride), null);
     }
 
     @Transactional
@@ -271,10 +271,15 @@ public class RideService {
         }
     }
 
+    /**
+     * The PIN is the rider's, until the trip starts. An NPC rider (ADR 0016) has no screen to show
+     * it on: once the car is at the pickup, it reads the PIN out to the driver, who still types it.
+     */
     private String otpFor(AuthUser caller, Ride ride) {
-        return caller.id().equals(ride.getRiderId()) && OTP_VISIBLE.contains(ride.getStatus())
-                ? otps.otpFor(ride.getId())
-                : null;
+        boolean rider = caller.id().equals(ride.getRiderId()) && OTP_VISIBLE.contains(ride.getStatus());
+        boolean toldByNpc = ride.isSimulated() && ride.getStatus() == RideStatus.DRIVER_ARRIVED
+                && caller.id().equals(ride.getDriverId());
+        return rider || toldByNpc ? otps.otpFor(ride.getId()) : null;
     }
 
     private void record(Ride ride, RideStatus from, String actor, Instant at) {

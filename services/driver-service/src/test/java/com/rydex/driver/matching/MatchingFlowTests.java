@@ -310,6 +310,47 @@ class MatchingFlowTests extends IntegrationTest {
                 .query(Integer.class).single()).isEqualTo(1);
     }
 
+    private TestDriver npcDriver(RideType type, GeoPoint at) {
+        TestDriver d = onlineDriver(type, at);
+        jdbc.sql("UPDATE drivers SET simulated = true WHERE user_id = :id").param("id", d.id()).update();
+        return d;
+    }
+
+    private UUID requestRideOfNpc(RideType type, GeoPoint pickup) {
+        UUID rideId = UUID.randomUUID();
+        matching.onRideRequested(rideId, new RidePayload(UUID.randomUUID(), null, type, pickup, AIRPORT,
+                new BigDecimal("339.00"), 22111, 1359, null, null, true), Instant.now());
+        return rideId;
+    }
+
+    @Test
+    void aRealRidersRideGoesToARealDriverBeforeCloserNpcs() {
+        TestDriver npc = npcDriver(RideType.ECONOMY, north(CENTER, 300));
+        TestDriver person = onlineDriver(RideType.ECONOMY, north(CENTER, 6_000)); // outside the first two radii
+        UUID rideId = requestRide(RideType.ECONOMY, CENTER);
+
+        awaitOfferTo(person, rideId);
+        assertNoOffer(npc);
+
+        api().post("/api/drivers/me/offers/" + rideId + "/reject", person.token(), null);
+        awaitOfferTo(npc, rideId);
+    }
+
+    @Test
+    void anNpcsRideGoesToARealDriverFirstOnlyNearby() {
+        TestDriver npc = npcDriver(RideType.COMFORT, north(CENTER, 200));
+        TestDriver near = onlineDriver(RideType.COMFORT, north(CENTER, 2_000));
+        UUID first = requestRideOfNpc(RideType.COMFORT, CENTER);
+        awaitOfferTo(near, first);
+        assertThat(api().post("/api/drivers/me/offers/" + first + "/accept", near.token(), null)
+                .getStatusCode().value()).isEqualTo(200);
+        assertThat(outboxField(first, "DRIVER_ASSIGNED", "simulated")).isEqualTo("true");
+
+        onlineDriver(RideType.COMFORT, north(CENTER, 4_000)); // a person, but beyond the first radius
+        UUID second = requestRideOfNpc(RideType.COMFORT, CENTER);
+        awaitOfferTo(npc, second);
+    }
+
     @Test
     void busyDriversNearbyDoNotHideFreeDriversFurtherOut() {
         TestDriver busyNearby = onlineDriver(RideType.ECONOMY, north(CENTER, 500));

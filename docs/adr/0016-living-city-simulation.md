@@ -33,6 +33,18 @@ Only one rider account and one driver account stay manual, for the user's own te
 - **The PIN, properly:** an NPC rider "says" the PIN on an in-process board (`PinBoard`), and the NPC driver types what it heard. Only when the rider is a real person, who cannot reach the board, does the driver fall back to the development OTP secret, after the boarding wait.
 - **Sign-ins** share the existing budget of 15 per minute, so the whole city is in after about 5 minutes. Drivers sign in before riders.
 
+### Playing alongside the NPCs
+The user tests every pairing by hand: an NPC rider with them driving, an NPC driver with them riding, NPCs only, and them on both sides.
+- **People first in matching:**
+  - Forty NPC drivers would win nearly every ride, so driver-service offers a ride to a real person online nearby before any NPC.
+  - That covers a real rider's ride anywhere in the search area (8 km), so `rider1` gets `driver01`, and an NPC rider's ride within the first radius (3 km).
+  - Once the person has been offered the ride, normal matching carries on.
+  - driver-service knows who is an NPC from `drivers.simulated` (V5, set by its seed for drivers 02-50) and `match_jobs.simulated_rider` (from `RidePayload.simulated`). With no NPCs among the candidates, matching is unchanged.
+- **An NPC rider reads the PIN out to a person:**
+  - An NPC rider has no screen to show the PIN on.
+  - Once the car is at the pickup (DRIVER_ARRIVED), ride-service includes the PIN in the ride view for the assigned driver of a simulated ride, and only then.
+  - The driver's screen shows what the rider "says", and the driver still types it in to start.
+
 ### Nearby cars for riders
 `GET /api/drivers/nearby?lat&lng` (driver-service) returns up to 6 free cars per ride type within 3 km, nearest first, read from the matching GEO index:
 - **No driver identities:** each car carries an opaque id, an HMAC of the driver id with a key made at startup. It stays stable between polls (so the map can glide the car) and means nothing else.

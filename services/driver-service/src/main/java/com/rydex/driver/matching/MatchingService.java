@@ -53,6 +53,8 @@ public class MatchingService {
 
     private static final Logger log = LoggerFactory.getLogger(MatchingService.class);
     static final String ACTOR = "SYSTEM:driver-service";
+    /** How many free drivers near a pickup are looked through for real people (all of a city's NPCs). */
+    static final int PEOPLE_FIRST_SCAN = 200;
 
     private final MatchJobRepository jobs;
     private final MatchOfferRepository offers;
@@ -167,6 +169,9 @@ public class MatchingService {
         MatchJob job = step.job();
         GeoPoint pickup = job.getPickup();
         Set<UUID> tried = new HashSet<>(step.alreadyOffered());
+        if (offerToPeopleFirst(job, tried) != OfferAttempt.DRIVER_BUSY) {
+            return;
+        }
         for (double radiusKm : props.searchRadiiKm()) {
             List<Candidate> found = finder.within(job.getRideType(), pickup, radiusKm, tried);
             for (Candidate.Ranked c : ranker.rank(pickup, found)) {
@@ -177,6 +182,36 @@ public class MatchingService {
             }
         }
         tx.executeWithoutResult(s -> nobodyFound(rideId));
+    }
+
+    /**
+     * The living city (ADR 0016): dozens of NPC drivers would win nearly every ride, so a real person
+     * online nearby is offered it first: anywhere in the search area for a real rider's ride (the
+     * owner testing both sides), within the first radius for an NPC's. Once they have been offered
+     * the ride, normal matching carries on. Without NPCs around, this changes nothing.
+     */
+    private OfferAttempt offerToPeopleFirst(MatchJob job, Set<UUID> tried) {
+        List<Double> radii = props.searchRadiiKm();
+        double reach = job.isSimulatedRider() ? radii.getFirst() : radii.getLast();
+        List<Candidate> found = finder.within(job.getRideType(), job.getPickup(), reach, tried, PEOPLE_FIRST_SCAN);
+        Set<UUID> npcs = new HashSet<>();
+        drivers.findAllById(found.stream().map(Candidate::driverId).toList()).forEach(d -> {
+            if (d.isSimulated()) {
+                npcs.add(d.getId());
+            }
+        });
+        if (npcs.isEmpty()) {
+            return OfferAttempt.DRIVER_BUSY;
+        }
+        List<Candidate> people = found.stream().filter(c -> !npcs.contains(c.driverId())).toList();
+        for (Candidate.Ranked c : ranker.rank(job.getPickup(), people)) {
+            tried.add(c.driverId());
+            OfferAttempt result = tryOffer(job.getRideId(), c);
+            if (result != OfferAttempt.DRIVER_BUSY) {
+                return result;
+            }
+        }
+        return OfferAttempt.DRIVER_BUSY;
     }
 
     /** Locks the driver, then records the offer; the lock is kept only if the offer was made. */

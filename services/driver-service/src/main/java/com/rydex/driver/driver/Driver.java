@@ -45,6 +45,10 @@ public class Driver {
     @Column(name = "current_ride_id")
     private UUID currentRideId;
 
+    /** An NPC of the living city (ADR 0016), set by the seed. */
+    @Column(nullable = false)
+    private boolean simulated;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -132,6 +136,10 @@ public class Driver {
 
     public UUID getId() {
         return id;
+    }
+
+    public boolean isSimulated() {
+        return simulated;
     }
 
     public String getName() {

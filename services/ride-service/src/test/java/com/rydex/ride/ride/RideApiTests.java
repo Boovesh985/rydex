@@ -163,6 +163,38 @@ class RideApiTests extends IntegrationTest {
     }
 
     @Test
+    void anNpcRiderReadsThePinOutToTheDriverAtThePickup() {
+        var npcAuth = api().register("RIDER");
+        String npc = token(npcAuth);
+        String human = token(api().register("RIDER"));
+        jdbc.sql("update users set simulated = true where id = ?").param(userId(npcAuth)).update();
+        var driverAuth = api().register("DRIVER");
+        String driver = token(driverAuth);
+        UUID npcRide = book(npc);
+        rideService.assignDriver(npcRide, userId(driverAuth), "SYSTEM:test");
+
+        assertThat(api().get("/api/rides/" + npcRide, driver).getBody().path("otp").isNull())
+                .as("not before the car is there").isTrue();
+        driverAtPickup(npcRide);
+        var arrived = api().post("/api/rides/" + npcRide + "/arrived", driver, null).getBody();
+        assertThat(arrived.path("otp").asString()).isEqualTo(otpService.otpFor(npcRide));
+        assertThat(api().get("/api/rides/" + npcRide, driver).getBody().path("otp").asString())
+                .isEqualTo(otpService.otpFor(npcRide));
+
+        // a real rider tells the driver themselves
+        var otherDriver = api().register("DRIVER");
+        UUID humanRide = book(human);
+        rideService.assignDriver(humanRide, userId(otherDriver), "SYSTEM:test");
+        driverAtPickup(humanRide);
+        assertThat(api().post("/api/rides/" + humanRide + "/arrived", token(otherDriver), null).getBody()
+                .path("otp").isNull()).isTrue();
+
+        api().post("/api/rides/" + npcRide + "/start", driver, Map.of("otp", otpService.otpFor(npcRide)));
+        assertThat(api().get("/api/rides/" + npcRide, driver).getBody().path("otp").isNull())
+                .as("gone once the trip starts").isTrue();
+    }
+
+    @Test
     void idempotencyKeyReplaysTheOriginalRide() {
         String rider = token(api().register("RIDER"));
         var headers = Map.of("Idempotency-Key", "book-" + UUID.randomUUID());
