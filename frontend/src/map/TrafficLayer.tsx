@@ -1,6 +1,6 @@
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl';
 import { useEffect } from 'react';
-import { BUILDINGS_3D, firstSymbolLayer } from './theme';
+import { BUILDINGS_3D, firstSymbolLayer, worldWidth } from './theme';
 import { loadRoads, TRAFFIC_COLORS, trafficAt } from './traffic';
 
 const SOURCE = 'rx-traffic';
@@ -40,8 +40,9 @@ export function TrafficLayer({ map, night }: { map: MlMap; night: boolean }) {
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': ['match', ['get', 'b'], 'free', TRAFFIC_COLORS.free, 'slow', TRAFFIC_COLORS.slow, 'heavy', TRAFFIC_COLORS.heavy, TRAFFIC_COLORS.jam],
-            'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 1.1, 13, 2.2, 15, 3.6, 17, 6.5, 19, 11],
-            'line-opacity': 0.88,
+            // a band down the middle of the road at street level, quieter so the lanes still read
+            'line-width': worldWidth([[10, 1.1], [13, 2.2], [15, 3.6], [17, 6.5], [19, 11]], 1.6),
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 18, 0.88, 20, 0.6],
           },
         },
         map.getLayer(BUILDINGS_3D) ? BUILDINGS_3D : firstSymbolLayer(map),

@@ -127,7 +127,6 @@ function RideScreen({ rideId }: { rideId: string }) {
             route={r.status === 'DRIVER_ARRIVED' ? null : routePoints}
             type={driver.data?.vehicleType ?? r.rideType}
             follow={rx.following}
-            onFollowLost={rx.stopFollowing}
           />
         )}
         <FitTo points={fit} refit={refit} />

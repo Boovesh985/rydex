@@ -221,7 +221,6 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
             route={routePoints}
             type={profile.vehicleType}
             follow={rx.following}
-            onFollowLost={rx.stopFollowing}
             label="Your car"
           />
         )}

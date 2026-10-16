@@ -24,44 +24,50 @@ export function hash2(i: number, j: number): number {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 }
 
+/** Metres east and north of a fixed point near Chennai: one grid for every road, whatever tile it came in. */
+const REF_LNG = 80;
+const REF_LAT = 13;
+const GRID_KX = mPerDegLng(13.05);
+
 /**
- * Points every `spacing` metres along a line, set `offset` metres to its side (alternating sides
- * when `bothSides`), facing the line. The first point's distance comes from a world grid, so the
- * same road gives the same points however the tiles cut it.
+ * Points about every `spacing` metres along a line, set `offset` metres to its side (alternating
+ * sides when `bothSides`), facing the line. A point goes where the line crosses a line of a fixed
+ * world grid (east-west lines for a road running mostly north-south, and the other way round), so
+ * the same road gives the same points however tiles cut or simplify it, and a rebuild never makes
+ * a lamp jump or doubles a row.
  */
 export function placeAlong(line: LngLat[], spacing: number, offset: number, bothSides: boolean): Placed[] {
   const out: Placed[] = [];
-  if (line.length < 2) return out;
-  const lat0 = line[0][1];
-  const kx = mPerDegLng(lat0);
-  // the phase: where along this piece the world's "every `spacing` metres" falls
-  const start = (hash2(Math.round(line[0][0] * 2000), Math.round(line[0][1] * 2000)) * spacing) % spacing;
-  let next = start;
-  let walked = 0;
-  let n = Math.floor(hash2(Math.round(line[0][1] * 2000), 7) * 2);
+  const grid = spacing * 0.85;
   for (let i = 1; i < line.length; i++) {
-    const [ax, ay] = line[i - 1];
-    const [bx, by] = line[i];
-    const dx = (bx - ax) * kx;
-    const dy = (by - ay) * M_PER_DEG_LAT;
+    const ax = (line[i - 1][0] - REF_LNG) * GRID_KX;
+    const ay = (line[i - 1][1] - REF_LAT) * M_PER_DEG_LAT;
+    const dx = (line[i][0] - REF_LNG) * GRID_KX - ax;
+    const dy = (line[i][1] - REF_LAT) * M_PER_DEG_LAT - ay;
     const seg = Math.hypot(dx, dy);
     if (seg === 0) continue;
     const heading = (Math.atan2(dx, dy) * 180) / Math.PI;
-    while (next <= walked + seg) {
-      const t = (next - walked) / seg;
-      const side = bothSides ? (n % 2 === 0 ? 1 : -1) : 1;
+    const alongX = Math.abs(dx) >= Math.abs(dy);
+    const a0 = alongX ? ax : ay;
+    const d = alongX ? dx : dy;
+    const lo = Math.min(a0, a0 + d);
+    const hi = Math.max(a0, a0 + d);
+    const ks: number[] = [];
+    for (let k = Math.ceil(lo / grid); k * grid < hi; k++) ks.push(k);
+    if (d < 0) ks.reverse();
+    for (const k of ks) {
+      const t = (k * grid - a0) / d;
+      // sides by the world grid too (and not by which way the road was drawn)
+      const side = (bothSides && Math.abs(k) % 2 === 1 ? -1 : 1) * (d < 0 ? -1 : 1);
       // perpendicular to the right of travel (+90 deg), or to the left
       const px = (dy / seg) * offset * side;
       const py = (-dx / seg) * offset * side;
       out.push({
-        lng: ax + (dx * t + px) / kx,
-        lat: ay + (dy * t + py) / M_PER_DEG_LAT,
+        lng: REF_LNG + (ax + dx * t + px) / GRID_KX,
+        lat: REF_LAT + (ay + dy * t + py) / M_PER_DEG_LAT,
         heading: (heading + (side > 0 ? 270 : 90) + 360) % 360,
       });
-      n++;
-      next += spacing;
     }
-    walked += seg;
   }
   return out;
 }

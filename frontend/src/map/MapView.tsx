@@ -11,10 +11,11 @@ import { bearing, haversine, lerp, lerpHeading, PathIndex, type LatLng } from '.
 import { decodePolyline } from '../lib/polyline';
 import { Atmosphere } from './Atmosphere';
 import type { CarLayer, CarPose } from './car3d';
+import { cameraBus, dampAngle, FollowCamera } from './followCamera';
 import { useMapPrefs, useNight } from './mapPrefs';
 import { MapPrefsControl } from './MapPrefsControl';
 import type { SceneryLayer } from './scenery';
-import { applyLook, BUILDINGS_3D, ROUTE_COLORS, STYLE_URL, type Look } from './theme';
+import { applyLook, BUILDINGS_3D, ROUTE_COLORS, STYLE_URL, worldWidth, type Look } from './theme';
 import { TrafficLayer } from './TrafficLayer';
 
 /*
@@ -53,6 +54,13 @@ function supportsWebGL(): boolean {
 }
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+/** 2D maps stop at 20; realistic mode goes down to street level, where cars and roads are life-size. */
+const MAX_ZOOM_2D = 20;
+const MAX_ZOOM_3D = 23;
+
+/** Realistic mode's free camera (no car followed): the tilt presets the view button steps through. */
+const FREE_TILTS = [72, 50, 0];
 
 /** Space the sheet takes: on the left on wide screens, along the bottom on phones. */
 function sheetPadding(realistic: boolean) {
@@ -96,6 +104,9 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
         zoom,
         // realistic mode's chase camera tilts far enough to see the sky
         maxPitch: 80,
+        maxZoom: MAX_ZOOM_2D,
+        // past 2x the extra pixels cost frame rate and show nothing new
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         attributionControl: { compact: true },
         // labels appear at once: fades need animation frames, which background tabs pause
         fadeDuration: 0,
@@ -125,6 +136,8 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
     const previous = look.current;
     applyLook(map, next, previous);
     look.current = next;
+    map.setMaxZoom(realistic ? MAX_ZOOM_3D : MAX_ZOOM_2D);
+    map.getContainer().classList.toggle('rx-realistic', realistic);
     if (previous && previous.realistic !== realistic && !followerRef.current) {
       const duration = reducedMotion() ? 0 : 1400;
       // a game-like view: low over the street, the centre pushed down so the horizon and sky show
@@ -175,10 +188,28 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
 
   useEffect(() => scenery?.setNight(night), [scenery, night]);
 
+  // the HUD's zoom and view buttons, while no car is followed (the follow camera handles its own)
+  useEffect(() => {
+    if (!map) return;
+    let tilt = 0;
+    return cameraBus.listen((c) => {
+      if (followerRef.current) return;
+      const duration = reducedMotion() ? 0 : 450;
+      if (c.type === 'zoom') map.easeTo({ zoom: map.getZoom() + c.by, duration });
+      else {
+        tilt = (tilt + 1) % FREE_TILTS.length;
+        const pitch = FREE_TILTS[tilt];
+        map.easeTo({ pitch, bearing: pitch === 0 ? 0 : map.getBearing(), duration: duration * 2 });
+      }
+    });
+  }, [map]);
+
   const state = useMemo(() => (map ? { map, realistic, night, cars: realistic ? cars : null, followerRef } : null), [map, realistic, night, cars]);
 
   return (
-    <div className={`relative ${className ?? 'h-full w-full'}`}>
+    <div className={`relative ${className ?? 'h-full w-full'}`} style={realistic ? { background: night ? '#141820' : '#e3dfd3' } : undefined}>
+      {/* the sky sits behind the (see-through above the horizon) map, so whatever stands up covers it */}
+      {map && realistic && <Atmosphere map={map} night={night} />}
       <div ref={container} className="absolute inset-0 h-full w-full" data-testid="map-canvas" />
       {failed && (
         <div className="absolute inset-0 grid place-items-center bg-mist p-6 text-center text-sm text-slate">
@@ -187,7 +218,6 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
       )}
       {map && <MapPrefsControl map={map} />}
       {map && traffic && <TrafficLayer map={map} night={night} />}
-      {map && realistic && <Atmosphere map={map} night={night} />}
       {state && <MapContext.Provider value={state}>{children}</MapContext.Provider>}
     </div>
   );
@@ -327,49 +357,45 @@ interface AnimatedCarProps {
   lat: number;
   lng: number;
   heading: number | null;
-  /** how long to glide to each new fix; a little longer than the update interval keeps it moving */
+  /** how long to glide to each new fix until the real interval is known; then it follows the fixes' pace */
   glideMs?: number;
   /** the road ahead: fixes near it are snapped and the car follows its curves between them */
   route?: LatLng[] | null;
   type?: RideType | null;
-  /** m/s, for the 3D wheels */
+  /** m/s */
   speed?: number | null;
-  /** realistic mode: the camera rides behind the car */
+  /** realistic mode: the chase camera rides behind the car */
   follow?: boolean;
-  /** the user moved the map away while following */
-  onFollowLost?: () => void;
   label?: string;
 }
 
 /**
  * The live car. Fixes arrive every ~3 s; it glides from where it is towards each new fix, along
- * the route when the fix is on it (so it takes the corners), and turns the short way round. In
- * realistic mode it is a 3D model and the camera can follow it.
+ * the route when the fix is on it (so it takes the corners), and turns the short way round. The
+ * glide lasts a little longer than the fixes' measured interval, so the car keeps rolling instead
+ * of stopping to wait for a late fix. In realistic mode it is a 3D model and the chase camera
+ * ({@link FollowCamera}) can ride behind it.
  */
-export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = null, speed = null, follow = false, onFollowLost, label = 'Your driver' }: AnimatedCarProps) {
+export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = null, speed = null, follow = false, label = 'Your driver' }: AnimatedCarProps) {
   const { map, realistic, cars, followerRef } = useMapState();
   const id = useId();
   const shown = useRef<Pose | null>(null);
   const marker = useRef<maplibregl.Marker | null>(null);
-  const camBearing = useRef<number | null>(null);
   const shownAlong = useRef<{ index: PathIndex; along: number } | null>(null);
-  const following = useRef(false);
-  const live = useRef({ cars, type, speed, realistic, follow, onFollowLost });
+  const lastFix = useRef<number | null>(null);
+  const fixInterval = useRef<number | null>(null);
+  const live = useRef({ cars, type, speed });
   useEffect(() => {
-    live.current = { cars, type, speed, realistic, follow, onFollowLost };
+    live.current = { cars, type, speed };
   });
   const index = useMemo(() => (route && route.length > 1 ? new PathIndex(route) : null), [route]);
 
   const draw = (pose: Pose) => {
-    const { cars: layer, type: t, speed: v, realistic: r } = live.current;
+    const { cars: layer, type: t, speed: v } = live.current;
     if (layer) layer.set(id, { lat: pose.lat, lng: pose.lng, heading: pose.heading, speed: v ?? 0, type: t, focus: true } satisfies CarPose);
     else if (marker.current) {
       marker.current.setLngLat([pose.lng, pose.lat]);
       marker.current.setRotation(pose.heading);
-    }
-    if (r && following.current) {
-      camBearing.current = lerpHeading(camBearing.current ?? pose.heading, pose.heading, reducedMotion() ? 1 : 0.07);
-      map.jumpTo({ center: [pose.lng, pose.lat], bearing: camBearing.current });
     }
   };
 
@@ -394,47 +420,22 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
     return () => cars.remove(id);
   }, [cars]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // follow camera: swoop in behind the car, then ride along; dragging the map stops it
+  // the chase camera: it owns the camera (and the gestures) while it follows
   useEffect(() => {
     const active = realistic && follow;
     followerRef.current = active;
-    if (!active) {
-      following.current = false;
-      return;
-    }
-    const pose = shown.current ?? { lat, lng, heading: heading ?? 0 };
-    camBearing.current = pose.heading;
-    const h = map.getContainer().clientHeight;
-    following.current = false;
-    map.easeTo({
-      center: [pose.lng, pose.lat],
-      zoom: 17.4,
-      // a chase camera: low behind the car, with the sky ahead
-      pitch: 74,
-      bearing: pose.heading,
-      padding: { top: Math.round(h * 0.42), bottom: 30, left: 0, right: 0 },
-      duration: reducedMotion() ? 0 : 1600,
-    });
-    const ready = () => {
-      following.current = true;
-    };
-    map.once('moveend', ready);
-    const lost = (e: { originalEvent?: unknown }) => {
-      if (e.originalEvent && following.current) {
-        following.current = false;
-        live.current.onFollowLost?.();
-      }
-    };
-    map.on('dragstart', lost);
-    map.on('rotatestart', lost);
-    map.on('pitchstart', lost);
+    if (!active) return;
+    const camera = new FollowCamera(
+      map,
+      () => {
+        const pose = shown.current ?? { lat, lng, heading: heading ?? 0 };
+        return { ...pose, speed: live.current.speed ?? 0 };
+      },
+      { reducedMotion: reducedMotion() },
+    );
     return () => {
-      following.current = false;
+      camera.dispose();
       followerRef.current = false;
-      map.off('moveend', ready);
-      map.off('dragstart', lost);
-      map.off('rotatestart', lost);
-      map.off('pitchstart', lost);
     };
   }, [map, realistic, follow]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -447,20 +448,30 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
     shownAlong.current = index && endAlong != null ? { index, along: endAlong } : null;
     const reduced = reducedMotion();
     const start = performance.now();
+    // pace the glide by how often fixes really come, so the car neither stalls nor rushes
+    if (lastFix.current != null) {
+      const gap = start - lastFix.current;
+      if (gap > 400 && gap < 15_000) fixInterval.current = fixInterval.current == null ? gap : fixInterval.current * 0.7 + gap * 0.3;
+    }
+    lastFix.current = start;
+    const duration = fixInterval.current == null ? glideMs : Math.min(8000, Math.max(1000, fixInterval.current * 1.08));
     let frame = 0;
+    let last = start;
     const step = (now: number) => {
-      const t = reduced ? 1 : Math.min(1, (now - start) / glideMs);
+      const t = reduced ? 1 : Math.min(1, (now - start) / duration);
+      const dt = Math.max(0, (now - last) / 1000);
+      last = now;
       const next = position(t);
       const prev = shown.current ?? next;
       // ease the heading round corners instead of snapping at every polyline vertex
-      const pose = { ...next, heading: reduced ? next.heading : lerpHeading(prev.heading, next.heading, 0.18) };
+      const pose = { ...next, heading: reduced ? next.heading : dampAngle(prev.heading, next.heading, 0.16, dt) };
       shown.current = pose;
       draw(pose);
       if (t < 1) frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
     // background tabs pause animation frames: land on the fix anyway
-    const snap = setTimeout(() => step(start + glideMs), glideMs + 250);
+    const snap = setTimeout(() => step(start + duration), duration + 250);
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(snap);
@@ -532,10 +543,13 @@ export function RouteLine({ polyline, fallback, progress, tone = 'route' }: { po
     map.addSource(id, { type: 'geojson', lineMetrics: true, data });
     sent.current = data;
     const before = map.getLayer(BUILDINGS_3D) ? BUILDINGS_3D : undefined;
-    const width = (base: number): maplibregl.ExpressionSpecification => ['interpolate', ['exponential', 1.6], ['zoom'], 11, base * 0.45, 15, base, 18, base * 2.2];
-    map.addLayer({ id: `${id}-glow`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' }, paint: { 'line-width': width(16), 'line-blur': 10, 'line-opacity': 0.45 } }, before);
-    map.addLayer({ id: `${id}-casing`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(8.5), 'line-opacity': 0.9 } }, before);
-    map.addLayer({ id: `${id}-line`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(4.5) } }, before);
+    // pixels when zoomed out; at street level a stripe of real width down the lane (metres): the road
+    // ahead fills the lane, the path already driven stays a thin trace
+    const trail = tone === 'trail';
+    const width = (base: number, metres: number) => worldWidth([[11, base * 0.45], [15, base], [18, base * 2.2]], trail ? metres * 0.35 : metres);
+    map.addLayer({ id: `${id}-glow`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' }, paint: { 'line-width': width(16, 5), 'line-blur': ['interpolate', ['linear'], ['zoom'], 15, 10, 21, 30], 'line-opacity': 0.4 } }, before);
+    map.addLayer({ id: `${id}-casing`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(8.5, 3.6), 'line-opacity': 0.9 } }, before);
+    map.addLayer({ id: `${id}-line`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(4.5, 2.6) } }, before);
     return teardown;
   }, [map, id]); // eslint-disable-line react-hooks/exhaustive-deps -- later data goes through setData below
 
@@ -549,7 +563,7 @@ export function RouteLine({ polyline, fallback, progress, tone = 'route' }: { po
     if (!map.getLayer(`${id}-line`)) return;
     map.setPaintProperty(`${id}-casing`, 'line-color', colors.casing);
     map.setPaintProperty(`${id}-glow`, 'line-color', colors.glow);
-    map.setLayoutProperty(`${id}-glow`, 'visibility', realistic || night ? 'visible' : 'none');
+    map.setLayoutProperty(`${id}-glow`, 'visibility', (realistic || night) && tone !== 'trail' ? 'visible' : 'none');
     map.setPaintProperty(`${id}-casing`, 'line-dasharray', dashed ? [0.4, 1.6] : undefined);
     map.setPaintProperty(`${id}-line`, 'line-dasharray', dashed ? [0.4, 1.6] : undefined);
     const p = dashed || progress == null ? 0 : Math.min(0.999, Math.max(0, progress));
@@ -559,7 +573,7 @@ export function RouteLine({ polyline, fallback, progress, tone = 'route' }: { po
     } else {
       map.setPaintProperty(`${id}-line`, 'line-gradient', p > 0 ? ['step', ['line-progress'], colors.done, p, colors.line] : ['step', ['line-progress'], colors.line, 1, colors.line]);
     }
-  }, [map, id, colors, dashed, progress, realistic, night]);
+  }, [map, id, colors, dashed, progress, realistic, night, tone]);
 
   return null;
 }

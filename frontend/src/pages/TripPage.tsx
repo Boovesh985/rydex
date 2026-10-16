@@ -12,9 +12,10 @@ import { RideStatusChip } from '../components/RideStatusChip';
 import { RideTimeline } from '../components/RideTimeline';
 import { ErrorNote, Eyebrow, Meter, Plate, Sheet, Spinner } from '../components/ui';
 import { distance, inr, minutes, rideTypeLabel, shortAddress, when } from '../lib/format';
-import { PathIndex, pathLength, type LatLng } from '../lib/geo';
+import { haversine, pathLength, type LatLng } from '../lib/geo';
 import { decodePolyline } from '../lib/polyline';
 import { AnimatedCar, BaseMap, DropPin, FitTo, PickupPin, RouteLine } from '../map/MapView';
+import { useFollowedRoute, type Leg } from '../map/useFollowedRoute';
 import { useRealistic } from '../map/useRealistic';
 import { newest } from '../lib/geo';
 import { useOnReconnect, useSubscription } from '../realtime/hooks';
@@ -25,6 +26,9 @@ const TRACKED = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
  * One ride for its driver (from their trip history) and for admins (from the operations view):
  * the planned route, the path actually driven, and the car live while the ride is on.
  */
+/** Fixes further apart than this (path history comes every few seconds) are a jump, not driving. */
+const TRAIL_JUMP_M = 250;
+
 export function TripPage() {
   const { rideId = '' } = useParams();
   return <Trip key={rideId} rideId={rideId} />;
@@ -72,9 +76,29 @@ function Trip({ rideId }: { rideId: string }) {
     if (!r || !planned.data) return null;
     return planned.data.polyline ? decodePolyline(planned.data.polyline) : [[r.pickup.lat, r.pickup.lng], [r.drop.lat, r.drop.lng]];
   }, [planned.data, r?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const trail = useMemo<LatLng[]>(() => (path.data ?? []).map((p) => [p.lat, p.lng]), [path.data]);
-  const index = useMemo(() => (plannedPoints && plannedPoints.length > 1 ? new PathIndex(plannedPoints) : null), [plannedPoints]);
-  const progress = index && location && r?.status === 'IN_PROGRESS' && index.length > 0 ? index.project([location.lat, location.lng]).along / index.length : null;
+  // the path driven, from after its last jump (a car that was resumed somewhere else, a GPS leap):
+  // a straight line across the blocks is not where the car went
+  const trail = useMemo<LatLng[]>(() => {
+    const points = (path.data ?? []).map((p): LatLng => [p.lat, p.lng]);
+    let from = 0;
+    for (let i = 1; i < points.length; i++) if (haversine(points[i - 1], points[i]) > TRAIL_JUMP_M) from = i;
+    return points.slice(from);
+  }, [path.data]);
+
+  // while the car moves, the road it really takes (as on the rider's screen): to the pickup, then the
+  // trip; matched fix by fix, only forwards, and re-planned when the driver leaves it. Matching to the
+  // planned route alone sent the bar to 100% whenever the driver took another road near its end.
+  const toPickup = r?.status === 'DRIVER_ASSIGNED';
+  const leg = useMemo<Leg | null>(() => {
+    if (!r || !tracked || r.status === 'DRIVER_ARRIVED') return null;
+    return toPickup
+      ? { key: `${r.id}:to-pickup`, from: location ? [location.lat, location.lng] : null, to: [r.pickup.lat, r.pickup.lng] }
+      : { key: `${r.id}:trip`, from: [r.pickup.lat, r.pickup.lng], to: [r.drop.lat, r.drop.lng] };
+  }, [r, tracked, toPickup, location]);
+  const moving = leg ? location : null;
+  const road = useFollowedRoute(leg, moving);
+  const followed = leg && road.points ? road.points : null;
+  const progress = r?.status === 'IN_PROGRESS' ? road.legProgress : null;
 
   const hasLocation = !!location;
   const fit = useMemo<LatLng[]>(() => {
@@ -94,7 +118,11 @@ function Trip({ rideId }: { rideId: string }) {
       <BaseMap realistic={rx.active} night={rx.night}>
         {r && <PickupPin at={[r.pickup.lat, r.pickup.lng]} />}
         {r && <DropPin at={[r.drop.lat, r.drop.lng]} />}
-        {plannedPoints && <RouteLine polyline={planned.data?.polyline} fallback={plannedPoints} progress={progress} />}
+        {followed ? (
+          <RouteLine polyline={road.polyline} fallback={followed} progress={road.lineProgress} />
+        ) : (
+          plannedPoints && <RouteLine polyline={planned.data?.polyline} fallback={plannedPoints} />
+        )}
         {trail.length > 1 && <RouteLine polyline={null} fallback={trail} tone="trail" />}
         {location && (
           <AnimatedCar
@@ -102,10 +130,9 @@ function Trip({ rideId }: { rideId: string }) {
             lng={location.lng}
             heading={location.heading}
             speed={location.speed}
-            route={r?.status === 'IN_PROGRESS' ? plannedPoints : null}
+            route={followed}
             type={driver.data?.vehicleType ?? r?.rideType}
             follow={rx.following}
-            onFollowLost={rx.stopFollowing}
             label={driver.data ? `${driver.data.name}'s car` : 'The car'}
           />
         )}

@@ -2,6 +2,7 @@ import type { Map as MlMap } from 'maplibre-gl';
 import { useEffect, useMemo, useRef } from 'react';
 import { hash2 } from './sceneryPlacement';
 import { horizonY, projectSky, skyLight } from './sky';
+import { skyColors } from './theme';
 
 interface Cloud {
   azimuth: number;
@@ -20,9 +21,11 @@ const CLOUD_SHAPES = [
 ];
 
 /**
- * Realistic mode's sky above the horizon (ADR 0016): the sun or the moon where it really is over
- * Chennai, stars at night, and 22 clouds drifting with the wind. Drawn over the map's own sky colour,
- * only in the band above the horizon, so it never covers the streets.
+ * Realistic mode's sky (ADR 0016, 0017): a gradient down to the horizon, the sun or the moon where
+ * it really is over Chennai, stars at night, and 22 clouds drifting with the wind. It lies behind the
+ * map, whose own sky is see-through, so trees, lamps and buildings standing above the horizon cover
+ * the clouds. Updated in step
+ * with the map's frames, and only when the camera moved or the clouds drifted.
  */
 export function Atmosphere({ map, night }: { map: MlMap; night: boolean }) {
   const band = useRef<HTMLDivElement>(null);
@@ -42,17 +45,16 @@ export function Atmosphere({ map, night }: { map: MlMap; night: boolean }) {
       })),
     [],
   );
+  const colors = skyColors(night);
   const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({ azimuth: hash2(i, 21) * 360, elevation: 6 + hash2(i, 22) * 40, size: hash2(i, 23) < 0.15 ? 2.5 : 1.5 })), []);
 
   useEffect(() => {
-    let frame = 0;
-    let lastDraw = 0;
-    const draw = (now: number) => {
-      frame = requestAnimationFrame(draw);
-      if (now - lastDraw < 33 || document.hidden) return; // ~30 fps is plenty for clouds
-      lastDraw = now;
+    let last = '';
+    let lastMinute = -1;
+    // drawn in step with the map's own frames (its render event), so the sky never trails the camera
+    const draw = () => {
       const el = band.current;
-      if (!el) return;
+      if (!el || document.hidden) return;
       const width = map.getContainer().clientWidth;
       const height = map.getContainer().clientHeight;
       const padding = map.getPadding();
@@ -68,20 +70,27 @@ export function Atmosphere({ map, night }: { map: MlMap; night: boolean }) {
         centerY: pad.top + (height - pad.top - pad.bottom) / 2,
         focal,
       };
+      // clouds drift by the minute: between camera moves, ten updates a minute are plenty
+      const minutes = Date.now() / 60_000;
+      const tick = Math.floor(minutes * 10);
+      const key = `${cam.bearing.toFixed(2)}|${cam.pitch.toFixed(2)}|${width}|${height}|${cam.centerY.toFixed(1)}|${focal.toFixed(1)}`;
+      if (key === last && tick === lastMinute) return;
+      last = key;
+      lastMinute = tick;
       const horizon = horizonY(cam);
       if (horizon < 8) {
         el.style.visibility = 'hidden';
         return;
       }
       el.style.visibility = 'visible';
-      el.style.height = `${Math.round(horizon + 2)}px`;
-      const minutes = Date.now() / 60_000;
+      // a little past the horizon: the ground's fog fades into the same colour
+      el.style.height = `${Math.round(horizon + 24)}px`;
 
       const light = skyLight(new Date(), night);
       const at = projectSky(light.azimuth, Math.min(light.elevation, 30), cam);
       if (body.current) {
         body.current.style.display = at ? 'block' : 'none';
-        if (at) body.current.style.transform = `translate(${at.x}px, ${at.y}px) translate(-50%, -50%)`;
+        if (at) body.current.style.transform = `translate3d(${at.x}px, ${at.y}px, 0) translate(-50%, -50%)`;
       }
       clouds.forEach((c, i) => {
         const node = cloudEls.current[i];
@@ -95,22 +104,33 @@ export function Atmosphere({ map, night }: { map: MlMap; night: boolean }) {
         const scale = Math.max(0.35, Math.min(1.3, (c.elevation + 2) / 6));
         node.style.display = 'block';
         node.style.opacity = String(Math.min(1, (horizon - p.y) / 25));
-        node.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%) scale(${scale})`;
+        node.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -50%) scale(${scale})`;
       });
       stars.forEach((s, i) => {
         const node = starEls.current[i];
         if (!node) return;
         const p = night ? projectSky(s.azimuth, s.elevation, cam) : null;
         node.style.display = p ? 'block' : 'none';
-        if (p) node.style.transform = `translate(${p.x}px, ${p.y}px)`;
+        if (p) node.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`;
       });
     };
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
+    map.on('render', draw);
+    // the drift goes on while the map is still (no render events then)
+    const timer = setInterval(draw, 6000);
+    draw();
+    return () => {
+      map.off('render', draw);
+      clearInterval(timer);
+    };
   }, [map, night, clouds, stars]);
 
   return (
-    <div ref={band} className="pointer-events-none absolute inset-x-0 top-0 z-[1] overflow-hidden" style={{ visibility: 'hidden' }} aria-hidden>
+    <div
+      ref={band}
+      className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden"
+      style={{ visibility: 'hidden', background: `linear-gradient(to bottom, ${colors.sky} 0%, ${colors.sky} 25%, ${colors.horizon} calc(100% - 24px), ${colors.horizon} 100%)` }}
+      aria-hidden
+    >
       {stars.map((s, i) => (
         <span
           key={`s${i}`}

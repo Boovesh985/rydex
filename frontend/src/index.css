@@ -79,6 +79,47 @@
   bottom: 8px;
 }
 
+/* realistic mode has its own zoom and camera buttons; MapLibre's would fight the chase camera */
+.rx-realistic .maplibregl-ctrl-group:has(.maplibregl-ctrl-zoom-in) {
+  display: none;
+}
+
+/* the chase camera owns the gestures: the map shows a grab hand, not a crosshair */
+.rx-following .maplibregl-canvas-container {
+  cursor: grab;
+  touch-action: none;
+}
+
+.rx-following .maplibregl-canvas-container:active {
+  cursor: grabbing;
+}
+
+.rx-hint {
+  animation: rx-hint 7s ease-in-out forwards;
+}
+
+@keyframes rx-hint {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  8%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rx-hint {
+    animation: none;
+  }
+}
+
 /* pickup / drop: a flag on a stem over a ground dot; stands upright when the map is pitched */
 .rx-pin {
   display: flex;
