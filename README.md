@@ -60,16 +60,21 @@ cd simulator; pip install -r requirements.txt; python simulate.py --city
 - **Watch:** sign in as `admin@rydex.dev` for the operations map: the living city, the geohash grid matching uses, demand and KPIs, and every ride in flight (open one to watch it live).
 
 **Realistic 3D.** On the booking map, a live ride, the driver dashboard, a trip page or the operations map, press **Realistic 3D**:
-- the map tilts and buildings rise;
-- tree-lined streets get street lights;
-- the sun (or the moon and stars) sits where it really is over Chennai, and clouds drift by;
-- the car becomes a 3D model and the camera rides behind it, with a speedometer and the ETA overhead.
+- the map tilts, buildings rise, and at street level everything is life-size: asphalt roads with pavements and lane lines;
+- streets get broadleaf trees, coconut palms swaying in the breeze, and street lights;
+- the sun (or the moon and stars) sits where it really is over Chennai, and clouds drift by behind the buildings;
+- the car becomes a detailed 3D model (number plates, rims, a lit taxi sign) that steers into turns, leans in corners, and shows brake lights and indicators;
+- a chase camera rides behind it, with a speedometer and the ETA overhead.
+
+Moving the camera:
+- **Following a car:** drag to look around it (it swings back behind the car), scroll or pinch to zoom, double-click to reset. The camera button (or C) switches between chase, high chase, street level and top-down. Arrow keys look and tilt.
+- **Free camera** (the operations map, the booking map, or with Follow off): drag to move, right-drag or Ctrl+drag to turn and tilt, scroll to zoom. The camera button steps between street tilt, bird's eye and top-down.
 
 Every map has two switches by its zoom buttons:
 - **traffic:** Google-style green, orange, red and dark red on the main roads. It is simulated, and the automated cars slow down in it.
 - **day/night/auto:** the night city has glowing street lights and headlights.
 
-Maps are MapLibre vector maps on free OpenFreeMap tiles. The 3D cars and scenery are drawn with three.js (ADR 15, ADR 16).
+Maps are MapLibre vector maps on free OpenFreeMap tiles. The 3D cars and scenery are drawn with three.js (ADR 15, ADR 16, ADR 17).
 
 The web app talks to one origin: the Vite dev server forwards each `/api` prefix and `/ws` to its service (ADR 13).
 The simulator signs in at most 15 accounts a minute, so the whole city takes about 5 minutes to come in. Automated
@@ -158,4 +163,4 @@ docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16), the chase camera and a life-size street (ADR 17).
