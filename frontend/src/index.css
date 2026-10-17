@@ -345,12 +345,12 @@
 }
 
 /* a car's duty on the admin map: free, heading to a pickup, carrying a rider */
-.rx-car-pickup svg rect:first-of-type {
+.rx-car-pickup svg .rx-body {
   stroke: #f08c00;
   stroke-width: 3;
 }
 
-.rx-car-trip svg rect:first-of-type {
+.rx-car-trip svg .rx-body {
   stroke: #0b6e79;
   stroke-width: 3;
 }

@@ -161,21 +161,24 @@ export function TripProgress({ progress, from, to }: { progress: number; from: s
   );
 }
 
-/** Realistic mode without a car to follow (the operations map, the booking map): exit, tilt, zoom, day/night. */
-export function RealisticBar({ night, onNight, onExit }: { night: boolean; onNight: () => void; onExit: () => void }) {
+/**
+ * Realistic mode without a ride of its own (the operations map, the booking map): exit, camera,
+ * day/night, zoom. `following`: the camera chases a car the viewer picked (the admin's ride-along).
+ */
+export function RealisticBar({ night, onNight, onExit, following = false }: { night: boolean; onNight: () => void; onExit: () => void; following?: boolean }) {
   return (
     <>
       <div className="absolute top-[4.6rem] right-3 z-[1100] flex flex-col gap-2 md:top-20 md:right-4">
         <HudButton label="Exit realistic mode" onClick={onExit} tone="dark">
           <X className="size-5" />
         </HudButton>
-        <CameraButton following={false} />
+        <CameraButton following={following} />
         <HudButton label={night ? 'Switch to day' : 'Switch to night'} pressed={night} onClick={onNight}>
           {night ? <Moon className="size-5" /> : <Sun className="size-5" />}
         </HudButton>
         <ZoomButtons />
       </div>
-      <GestureHint following={false} />
+      <GestureHint following={following} />
     </>
   );
 }

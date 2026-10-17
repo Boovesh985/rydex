@@ -1,21 +1,25 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { adminApi, ridesApi } from '../../api/endpoints';
 import { errorMessage } from '../../api/http';
 import { RIDE_TYPES, type Page, type Payment, type Ride } from '../../api/types';
 import { PaymentBadge } from '../../components/PaymentPanel';
-import { RealisticBar, RealisticButton } from '../../components/Realistic';
+import { RealisticBar, RealisticButton, SpeedDial } from '../../components/Realistic';
 import { RideStatusChip } from '../../components/RideStatusChip';
 import { Button, ErrorNote, Eyebrow } from '../../components/ui';
 import { clock, inr, minutes, rideTypeLabel, shortAddress, when } from '../../lib/format';
 import type { LatLng } from '../../lib/geo';
 import { VEHICLE_PAINT } from '../../lib/vehicles';
-import { BaseMap, DemandHeat, DispatchLines, Fleet, GridOverlay, MapMoves, RiderMarkers, type GridCellShape } from '../../map/MapView';
+import { AnimatedCar, BaseMap, DemandHeat, DispatchLines, Fleet, GridOverlay, MapMoves, RememberView, RiderMarkers, type GridCellShape } from '../../map/MapView';
 import { TRAFFIC_COLORS } from '../../map/traffic';
 import { useRealistic } from '../../map/useRealistic';
 import { cityView } from './city';
+import { RideAlong } from './RideAlong';
+
+/** a driver's ride while it is theirs: on the way, waiting at the pickup, or under way */
+const RIDING = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
 
 /** the living city's centre (ADR 0016): T Nagar, so the old city, the beach and the IT corridor are in view */
 const CITY: LatLng = [13.045, 80.245];
@@ -43,6 +47,22 @@ export function AdminDashboard() {
   const stats = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => adminApi.stats(24), refetchInterval: 10_000 });
 
   const city = useMemo(() => cityView(drivers.data ?? [], inFlight.data?.items ?? []), [drivers.data, inFlight.data]);
+
+  // ride along with one vehicle: click it on the map; in realistic mode the chase camera rides behind it
+  const [picked, setRiding] = useState<string | null>(null);
+  // a driver who went offline leaves nothing to follow
+  const online = !drivers.data || drivers.data.some((d) => d.driverId === picked && (d.status === 'AVAILABLE' || d.status === 'ON_TRIP'));
+  const riding = picked && online ? picked : null;
+  const ridingCar = riding ? (city.fleet.find((c) => c.id === riding) ?? null) : null;
+  const ridingRide = riding ? (inFlight.data?.items.find((r) => r.driverId === riding && RIDING.includes(r.status)) ?? null) : null;
+  useEffect(() => {
+    if (!riding) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRiding(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [riding]);
   const cells = useMemo<GridCellShape[]>(
     () =>
       (grid.data?.cells ?? []).map((c) => ({
@@ -62,7 +82,20 @@ export function AdminDashboard() {
           {layers.demand && demand.data && <DemandHeat cells={demand.data} />}
           {layers.grid && <GridOverlay cells={cells} />}
           {layers.trips && <DispatchLines lines={city.lines} />}
-          {layers.drivers && <Fleet cars={city.fleet} />}
+          {layers.drivers && <Fleet cars={city.fleet} hide={riding} onSelect={setRiding} />}
+          {ridingCar && (
+            <AnimatedCar
+              lat={ridingCar.lat}
+              lng={ridingCar.lng}
+              heading={ridingCar.heading}
+              speed={ridingCar.speed ?? null}
+              type={ridingCar.type}
+              carrying={ridingCar.duty === 'trip'}
+              follow={rx.active}
+              label={ridingCar.label}
+            />
+          )}
+          <RememberView holding={!!ridingCar} />
           {layers.riders && <RiderMarkers riders={city.riders} onSelect={(id) => navigate(`/trips/${id}`)} />}
         </BaseMap>
         <div className="absolute top-20 left-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1 rounded-xl bg-paper p-1 shadow-[var(--shadow-float)] md:left-4">
@@ -77,62 +110,89 @@ export function AdminDashboard() {
             </button>
           ))}
         </div>
-        {rx.active ? <RealisticBar night={rx.night} onNight={rx.toggleNight} onExit={rx.exit} /> : <RealisticButton onClick={rx.enter} />}
+        {rx.active ? (
+          <RealisticBar night={rx.night} onNight={rx.toggleNight} onExit={rx.exit} following={!!ridingCar} />
+        ) : (
+          <RealisticButton onClick={rx.enter} />
+        )}
+        {rx.active && ridingCar && (
+          <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 z-[1100] md:left-4">
+            <SpeedDial kmh={(ridingCar.speed ?? 0) * 3.6} />
+          </div>
+        )}
+        {rx.active && !ridingCar && layers.drivers && (
+          <p className="pointer-events-none absolute bottom-12 left-1/2 z-[1100] -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1.5 text-sm font-bold whitespace-nowrap text-chalk shadow-[var(--shadow-float)]">
+            Click any vehicle to ride along
+          </p>
+        )}
       </div>
 
       <aside className="flex-1 space-y-5 overflow-y-auto bg-paper p-4 md:w-[400px] md:flex-none md:pt-20">
-        <div>
-          <h1 className="font-display-wide text-2xl font-black">Operations</h1>
-          <p className="text-sm text-slate">The living city · last 24 hours · live</p>
-        </div>
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-chalk p-1" role="tablist" aria-label="Operations views">
-          {(
-            [
-              ['overview', 'Overview'],
-              ['rides', 'Live rides'],
-              ['payments', 'Payments'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={tab === value}
-              onClick={() => setTab(value)}
-              className={`rounded-lg py-2 text-sm font-bold ${tab === value ? 'bg-ink text-chalk' : 'text-slate hover:text-ink'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === 'overview' && (
+        {riding ? (
+          <RideAlong
+            key={riding}
+            driverId={riding}
+            duty={ridingCar?.duty ?? 'free'}
+            speedKmh={ridingCar?.speed != null ? ridingCar.speed * 3.6 : null}
+            ride={ridingRide}
+            onClose={() => setRiding(null)}
+          />
+        ) : (
           <>
-            <ErrorNote>{(stats.error || drivers.error) && errorMessage(stats.error ?? drivers.error)}</ErrorNote>
-            <section aria-label="Right now" className="grid grid-cols-2 gap-2">
-              <Kpi label="Free drivers" value={`${city.counts.free}`} note="cruising, waiting for a request" />
-              <Kpi label="To pickups" value={`${city.counts.toPickup}`} note="driving to their rider" />
-              <Kpi label="With riders" value={`${city.counts.carrying}`} note="trips under way" />
-              <Kpi label="Riders waiting" value={`${city.counts.searching + city.counts.waiting}`} note={`${city.counts.searching} still searching`} />
-            </section>
-            <section aria-label="Last 24 hours" className="grid grid-cols-2 gap-2">
-              <Kpi label="Requested" value={stats.data ? `${stats.data.requested}` : '–'} note={stats.data ? `${stats.data.completed} done · ${stats.data.cancelled} cancelled` : ''} />
-              <Kpi label="Match rate" value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`} note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign`} />
-              <Kpi label="Revenue" value={stats.data ? inr(stats.data.revenue) : '–'} note={stats.data?.avgFare == null ? '' : `${inr(stats.data.avgFare)} avg fare`} />
-              <Kpi label="Pickup wait" value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)} note="assigned → arrived" />
-            </section>
-            {grid.data && layers.grid && (
-              <p className="text-sm text-slate">
-                Map centre cell <span className="font-mono font-bold text-ink">{grid.data.center}</span>: {grid.data.availableDrivers} drivers available and {grid.data.recentRequests} requests in the 3×3 search area.
-              </p>
-            )}
-            <Legend />
-            <p className="text-xs text-slate">
-              Start the city with <code className="rounded bg-chalk px-1 font-mono">python simulate.py --city</code>: automated drivers and riders (NPCs) book, drive and pay on their own. rider1 and driver01 are yours to test with.
-            </p>
+            <div>
+              <h1 className="font-display-wide text-2xl font-black">Operations</h1>
+              <p className="text-sm text-slate">The living city · last 24 hours · live</p>
+            </div>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-chalk p-1" role="tablist" aria-label="Operations views">
+              {(
+                [
+                  ['overview', 'Overview'],
+                  ['rides', 'Live rides'],
+                  ['payments', 'Payments'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  role="tab"
+                  aria-selected={tab === value}
+                  onClick={() => setTab(value)}
+                  className={`rounded-lg py-2 text-sm font-bold ${tab === value ? 'bg-ink text-chalk' : 'text-slate hover:text-ink'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {tab === 'overview' && (
+              <>
+                <ErrorNote>{(stats.error || drivers.error) && errorMessage(stats.error ?? drivers.error)}</ErrorNote>
+                <section aria-label="Right now" className="grid grid-cols-2 gap-2">
+                  <Kpi label="Free drivers" value={`${city.counts.free}`} note="cruising, waiting for a request" />
+                  <Kpi label="To pickups" value={`${city.counts.toPickup}`} note="driving to their rider" />
+                  <Kpi label="With riders" value={`${city.counts.carrying}`} note="trips under way" />
+                  <Kpi label="Riders waiting" value={`${city.counts.searching + city.counts.waiting}`} note={`${city.counts.searching} still searching`} />
+                </section>
+                <section aria-label="Last 24 hours" className="grid grid-cols-2 gap-2">
+                  <Kpi label="Requested" value={stats.data ? `${stats.data.requested}` : '–'} note={stats.data ? `${stats.data.completed} done · ${stats.data.cancelled} cancelled` : ''} />
+                  <Kpi label="Match rate" value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`} note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign`} />
+                  <Kpi label="Revenue" value={stats.data ? inr(stats.data.revenue) : '–'} note={stats.data?.avgFare == null ? '' : `${inr(stats.data.avgFare)} avg fare`} />
+                  <Kpi label="Pickup wait" value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)} note="assigned → arrived" />
+                </section>
+                {grid.data && layers.grid && (
+                  <p className="text-sm text-slate">
+                    Map centre cell <span className="font-mono font-bold text-ink">{grid.data.center}</span>: {grid.data.availableDrivers} drivers available and {grid.data.recentRequests} requests in the 3×3 search area.
+                  </p>
+                )}
+                <Legend />
+                <p className="text-xs text-slate">
+                  Start the city with <code className="rounded bg-chalk px-1 font-mono">python simulate.py --city</code>: automated drivers and riders (NPCs) book, drive and pay on their own. rider1 and driver01 are yours to test with.
+                </p>
           </>
         )}
         {tab === 'rides' && <LiveRides active={inFlight} />}
         {tab === 'payments' && <Payments />}
+          </>
+        )}
       </aside>
     </div>
   );

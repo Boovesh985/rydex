@@ -1,6 +1,7 @@
 package com.rydex.driver.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.awaitility.Awaitility.await;
 
 import com.rydex.common.RedisKeys;
@@ -68,6 +69,20 @@ class AdminApiTests extends IntegrationTest {
         assertThat(live.get(0).path("status").asString()).isEqualTo("AVAILABLE");
         assertThat(live.get(0).path("rideType").asString()).isEqualTo("COMFORT");
         assertThat(live.get(0).path("geohash").asString()).hasSize(6);
+    }
+
+    @Test
+    void adminLooksUpOneDriver() {
+        TestDriver online = onlineDriver(RideType.BIKE, CENTER);
+
+        JsonNode d = api().get("/api/admin/drivers/" + online.id(), TestTokens.admin()).getBody();
+
+        assertThat(d.path("id").asString()).isEqualTo(online.id().toString());
+        assertThat(d.path("vehicleType").asString()).isEqualTo("BIKE");
+        assertThat(d.path("status").asString()).isEqualTo("AVAILABLE");
+        assertThat(d.path("lastLocation").path("lat").asDouble()).isEqualTo(CENTER.lat(), within(1e-4));
+        assertThat(api().get("/api/admin/drivers/" + online.id(), online.token()).getStatusCode().value()).isEqualTo(403);
+        assertThat(api().get("/api/admin/drivers/" + UUID.randomUUID(), TestTokens.admin()).getStatusCode().value()).isEqualTo(404);
     }
 
     @Test

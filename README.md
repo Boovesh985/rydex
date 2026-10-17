@@ -63,6 +63,7 @@ cd simulator; pip install -r requirements.txt; python simulate.py --city
   - at the pickup, the automated rider "reads out" their PIN on your screen, and you type it in.
 - **Both sides yourself:** with driver01 online, rider1's rides go to you first (anywhere within 8 km), as long as you book driver01's ride type (Economy, unless you change it: while offline, **Change vehicle** turns driver01 into a bike, an auto or any cab).
 - **Watch:** sign in as `admin@rydex.dev` for the operations map: the living city, the geohash grid matching uses, demand and KPIs, and every ride in flight (open one to watch it live).
+- **Ride along:** on the operations map, click any vehicle. In Realistic 3D the chase camera rides behind it, and its driver and trip show live at the side. Close it (X or Esc) to return to the view you had.
 
 **Realistic 3D.** On the booking map, a live ride, the driver dashboard, a trip page or the operations map, press **Realistic 3D**:
 - the map tilts, buildings rise, and at street level everything is life-size: asphalt roads with pavements and lane lines;
@@ -171,4 +172,4 @@ docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16), the chase camera and a life-size street (ADR 17), bikes, autos and cabs in one app (ADR 18).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16), the chase camera and a life-size street (ADR 17), bikes, autos and cabs in one app (ADR 18), riding along from the operations map (ADR 19).

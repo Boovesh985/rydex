@@ -130,6 +130,12 @@ class AdminController {
         return matching.job(rideId).orElseThrow(() -> ApiException.notFound("Matching job"));
     }
 
+    @GetMapping("/drivers/{driverId}")
+    @Operation(summary = "One driver: profile, vehicle, status, current ride and last position")
+    DriverView driver(@PathVariable UUID driverId) {
+        return drivers.byId(driverId);
+    }
+
     @PostMapping("/drivers/{driverId}/release")
     @Operation(summary = "Free a driver stuck ON_TRIP whose ride is already over (they go OFFLINE)")
     DriverView release(@PathVariable UUID driverId) {

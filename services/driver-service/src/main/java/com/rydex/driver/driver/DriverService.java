@@ -125,6 +125,12 @@ public class DriverService {
         }
     }
 
+    /** Admin: any driver's profile, status and position (the operations map's ride-along panel). */
+    @Transactional(readOnly = true)
+    public DriverView byId(UUID driverId) {
+        return view(drivers.findById(driverId).orElseThrow(() -> ApiException.notFound("Driver")));
+    }
+
     /**
      * Admin: frees a driver stuck ON_TRIP (their ride's completion or cancellation never arrived,
      * e.g. it ended up in the dead-letter topic). Only for rides that are over in ride-service.

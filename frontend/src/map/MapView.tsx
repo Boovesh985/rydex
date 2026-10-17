@@ -7,7 +7,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RideType } from '../api/types';
 import { config } from '../config';
-import { bearing, haversine, lerp, lerpHeading, PathIndex, type LatLng } from '../lib/geo';
+import { bearing, haversine, lerp, lerpHeading, metersPerPixel, PathIndex, type LatLng } from '../lib/geo';
 import { decodePolyline } from '../lib/polyline';
 import { topDownSvg, vehicleKind } from '../lib/vehicles';
 import { Atmosphere } from './Atmosphere';
@@ -577,6 +577,26 @@ const emptyLine: FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 // ------------------------------------------------------------------ admin layers
 
+/**
+ * Holds on to the realistic camera while `holding` (a car is being ridden along with) and eases
+ * back to it when that ends, so closing a ride-along returns to the view it started from.
+ */
+export function RememberView({ holding }: { holding: boolean }) {
+  const { map, realistic } = useMapState();
+  const saved = useRef<{ center: maplibregl.LngLat; zoom: number; pitch: number; bearing: number } | null>(null);
+  useEffect(() => {
+    if (!realistic) {
+      saved.current = null;
+    } else if (holding) {
+      saved.current ??= { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+    } else if (saved.current) {
+      map.easeTo({ ...saved.current, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: reducedMotion() ? 0 : 1400 });
+      saved.current = null;
+    }
+  }, [map, realistic, holding]);
+  return null;
+}
+
 export type CarDuty = 'free' | 'pickup' | 'trip';
 
 export interface FleetCar {
@@ -588,6 +608,8 @@ export interface FleetCar {
   /** free, driving to a rider's pickup, or carrying a rider */
   duty: CarDuty;
   label: string;
+  /** m/s, when the driver reports it */
+  speed?: number | null;
 }
 
 /**
@@ -595,8 +617,26 @@ export interface FleetCar {
  * 3-second updates. Markers move on the main thread: re-sending a GeoJSON source every frame would
  * keep MapLibre's (single) tile worker busy and stall tile loading.
  */
-export function Fleet({ cars: fleet, glideMs = 2800 }: { cars: FleetCar[]; glideMs?: number }) {
+export function Fleet({
+  cars: all,
+  glideMs = 2800,
+  hide = null,
+  onSelect,
+}: {
+  cars: FleetCar[];
+  glideMs?: number;
+  /** a car drawn elsewhere (the one being ridden along with) */
+  hide?: string | null;
+  /** a car was clicked: its marker in 2D, the model in realistic mode */
+  onSelect?: (id: string) => void;
+}) {
   const { map, cars: layer } = useMapState();
+  const fleet = useMemo(() => (hide ? all.filter((c) => c.id !== hide) : all), [all, hide]);
+  const select = useRef(onSelect);
+  useEffect(() => {
+    select.current = onSelect;
+  });
+  const selectable = !!onSelect;
   const shown = useRef(new Map<string, Pose>());
   const markers = useRef(new Map<string, { marker: maplibregl.Marker; look: string }>());
   /** ids the 3D layer currently draws (mutated, never replaced, so cleanups see the latest) */
@@ -636,6 +676,13 @@ export function Fleet({ cars: fleet, glideMs = 2800 }: { cars: FleetCar[]; glide
         existing?.marker.remove();
         const el = carElement(car.type, 28, car.label);
         el.classList.add(`rx-car-${car.duty}`);
+        if (selectable) {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            select.current?.(car.id);
+          });
+        }
         const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map' }).setLngLat([car.lng, car.lat]).addTo(map);
         markers.current.set(car.id, { marker, look });
       }
@@ -668,7 +715,52 @@ export function Fleet({ cars: fleet, glideMs = 2800 }: { cars: FleetCar[]; glide
       cancelAnimationFrame(frame);
       clearTimeout(snap);
     };
-  }, [map, fleet, glideMs, layer]);
+  }, [map, fleet, glideMs, layer, selectable]);
+
+  // realistic mode: a click picks the nearest model under the pointer (they are drawn by three.js,
+  // so there is no element to click); the pointer turns into a hand over one
+  useEffect(() => {
+    if (!layer || !selectable) return;
+    const canvas = map.getCanvas();
+    const under = (point: { x: number; y: number }): string | null => {
+      const zoom = map.getZoom();
+      const lift = Math.sin((map.getPitch() * Math.PI) / 180);
+      let best: string | null = null;
+      let bestD = Infinity;
+      for (const [id, pose] of shown.current) {
+        const at = map.project([pose.lng, pose.lat]);
+        // fleet models are never shorter than 34 px; the body stands up off the road
+        const size = Math.max(34, 4.4 / metersPerPixel(zoom, pose.lat));
+        const d = Math.hypot(point.x - at.x, point.y - (at.y - size * 0.3 * lift));
+        if (d < Math.max(22, size * 0.6) && d < bestD) {
+          best = id;
+          bestD = d;
+        }
+      }
+      return best;
+    };
+    const click = (e: maplibregl.MapMouseEvent) => {
+      const id = under(e.point);
+      if (id) select.current?.(id);
+    };
+    let pending = 0;
+    const move = (e: maplibregl.MapMouseEvent) => {
+      if (pending) return;
+      const point = e.point;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        canvas.style.cursor = under(point) ? 'pointer' : '';
+      });
+    };
+    map.on('click', click);
+    map.on('mousemove', move);
+    return () => {
+      map.off('click', click);
+      map.off('mousemove', move);
+      cancelAnimationFrame(pending);
+      canvas.style.cursor = '';
+    };
+  }, [map, layer, selectable]);
 
   // the 3D models leave with realistic mode or with the fleet layer
   useEffect(() => {

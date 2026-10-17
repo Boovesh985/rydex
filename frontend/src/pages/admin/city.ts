@@ -37,6 +37,7 @@ export function cityView(drivers: LiveDriver[], rides: Ride[]): CityView {
       heading: d.heading,
       type: d.rideType,
       duty,
+      speed: d.speed,
       label: `${d.rideType ? rideTypeLabel[d.rideType] : 'Driver'} · ${DUTY_TEXT[duty]}`,
     });
     if (ride && ride.status === 'DRIVER_ASSIGNED') {
