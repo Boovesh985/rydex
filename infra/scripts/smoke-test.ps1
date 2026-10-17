@@ -240,8 +240,9 @@ if ($places.Status -eq 200) {
 $est = Api POST "$RideUrl/api/rides/estimate" $rider @{ pickup = $center; drop = $airport }
 $fares = @{}
 foreach ($o in @($est.Body.options)) { $fares[$o.rideType] = $o.fare }
-Check "estimate returns 3 ride types" ($est.Status -eq 200 -and $fares.Count -eq 3) `
-    ("{0:N1} km, ECONOMY Rs {1}, COMFORT Rs {2}, XL Rs {3}, route {4}" -f ($est.Body.distanceM / 1000), $fares["ECONOMY"], $fares["COMFORT"], $fares["XL"], $est.Body.route.source)
+$order = (@($est.Body.options) | ForEach-Object { $_.rideType }) -join ","
+Check "estimate returns 6 ride types, cheapest first" ($est.Status -eq 200 -and $order -eq "BIKE,AUTO,ECONOMY,COMFORT,XL,PREMIUM" -and $fares["BIKE"] -lt $fares["AUTO"] -and $fares["AUTO"] -lt $fares["ECONOMY"]) `
+    ("{0:N1} km, BIKE Rs {1}, AUTO Rs {2}, ECONOMY Rs {3}, COMFORT Rs {4}, XL Rs {5}, PREMIUM Rs {6}, route {7}" -f ($est.Body.distanceM / 1000), $fares["BIKE"], $fares["AUTO"], $fares["ECONOMY"], $fares["COMFORT"], $fares["XL"], $fares["PREMIUM"], $est.Body.route.source)
 
 # a previous run may have left rider1 with an active ride: cancel it first
 $mine = Api GET "$RideUrl/api/rides?mine=true&size=20" $rider
