@@ -57,12 +57,22 @@ class RideApiTests extends IntegrationTest {
         JsonNode body = res.getBody();
         assertThat(body.path("distanceM").asInt()).isEqualTo(5_000);
         assertThat(body.path("route").path("source").asString()).isEqualTo("OSRM");
-        assertThat(body.path("options")).hasSize(3);
+        // cheapest first: a bike, an auto, then the cabs
+        assertThat(body.path("options").valueStream().map(o -> o.path("rideType").asString()))
+                .containsExactly("BIKE", "AUTO", "ECONOMY", "COMFORT", "XL", "PREMIUM");
+        // BIKE: 20 + 6*5 + 0.5*15 = 57.5 -> 58; AUTO: 30 + 9*5 + 1*15 = 90
+        assertThat(option(body, "BIKE").path("fare").decimalValue()).isEqualByComparingTo("58");
+        assertThat(option(body, "AUTO").path("fare").decimalValue()).isEqualByComparingTo("90");
         // ECONOMY: 40 + 12*5 + 1.5*15 = 122.5 -> 123
-        JsonNode economy = body.path("options").get(0);
-        assertThat(economy.path("rideType").asString()).isEqualTo("ECONOMY");
+        JsonNode economy = option(body, "ECONOMY");
         assertThat(economy.path("fare").decimalValue()).isEqualByComparingTo("123");
         assertThat(economy.path("etaMinutes").isNull()).isTrue();
+    }
+
+    private static JsonNode option(JsonNode estimate, String rideType) {
+        return estimate.path("options").valueStream()
+                .filter(o -> o.path("rideType").asString().equals(rideType))
+                .findFirst().orElseThrow();
     }
 
     @Test
@@ -74,7 +84,7 @@ class RideApiTests extends IntegrationTest {
 
         var res = api().post("/api/rides/estimate", rider, Map.of("pickup", PICKUP, "drop", DROP));
 
-        JsonNode economy = res.getBody().path("options").get(0);
+        JsonNode economy = option(res.getBody(), "ECONOMY");
         assertThat(economy.path("driversNearby").asInt()).isEqualTo(1);
         assertThat(economy.path("etaMinutes").asInt()).isBetween(3, 6);
     }

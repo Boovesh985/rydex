@@ -111,7 +111,7 @@ export function RiderHome() {
   );
 }
 
-/** "6 cars nearby · closest 2 min", over the map. */
+/** "6 rides nearby · closest 2 min" (bikes, autos and cabs), over the map. */
 function NearbyChip({ count, closestMin }: { count: number; closestMin: number | null }) {
   return (
     <p
@@ -119,7 +119,7 @@ function NearbyChip({ count, closestMin }: { count: number; closestMin: number |
       className="pointer-events-none absolute top-[4.6rem] left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-ink px-3 py-1.5 text-sm font-bold text-chalk shadow-[var(--shadow-float)] max-md:top-auto max-md:bottom-[52dvh] md:top-20 md:left-[calc(50%+210px)]"
     >
       <span className={`size-2 rounded-full ${count > 0 ? 'bg-go' : 'bg-slate'}`} aria-hidden />
-      {count === 0 ? 'No cars nearby right now' : `${count} ${count === 1 ? 'car' : 'cars'} nearby · closest ${closestMin} min`}
+      {count === 0 ? 'No rides nearby right now' : `${count} ${count === 1 ? 'ride' : 'rides'} nearby · closest ${closestMin} min`}
     </p>
   );
 }

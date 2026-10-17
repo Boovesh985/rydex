@@ -130,6 +130,14 @@ describe('the follow camera', () => {
     cam.dispose();
   });
 
+  it('rides in closer behind a smaller vehicle', () => {
+    const { map, camera } = stubMap();
+    const cam = new FollowCamera(map as unknown as MlMap, () => ({ lat: 13.05, lng: 80.25, heading: 0, speed: 0 }), { zoomBias: 0.8 });
+    run(4);
+    expect(camera.zoom).toBeCloseTo(VIEWS.chase.zoom + 0.8, 1);
+    cam.dispose();
+  });
+
   it('zooms with the wheel and the zoom buttons, and looks around with a drag that springs back', () => {
     const { map, camera, canvasContainer } = stubMap();
     const cam = new FollowCamera(map as unknown as MlMap, () => ({ lat: 13.05, lng: 80.25, heading: 0, speed: 0 }));

@@ -7,7 +7,7 @@ from rydex_sim.api import AuthBudget, Endpoints
 from rydex_sim.geo import along, bearing, decode_polyline, haversine, offset, path_length, random_point
 from rydex_sim.otp import otp_for
 from rydex_sim.stomp import Frame
-from simulate import parse_args, seeded_order
+from simulate import TYPES, parse_args, seeded_order
 
 CENTRAL = (13.0827, 80.2707)
 
@@ -78,8 +78,9 @@ def test_endpoints_route_like_caddy():
 def test_any_number_of_drivers_gets_every_ride_type():
     order = seeded_order()
     assert sorted(order) == list(range(2, 51))  # driver01 is left for manual testing
-    first = order[:5]
-    assert any(n <= 30 for n in first) and any(31 <= n <= 42 for n in first) and any(n >= 43 for n in first)
+    first = order[:10]
+    for numbers in TYPES.values():
+        assert any(n in numbers for n in first)
 
 
 def test_arguments():
@@ -107,3 +108,13 @@ def test_auth_budget_paces_sign_ins():
         return loop.time() - start
 
     assert asyncio.run(go()) >= 0.29
+
+
+def test_bikes_filter_through_jams_and_autos_are_slower():
+    from rydex_sim.driver import pace
+
+    assert pace("ECONOMY", 1.0) == 1.0 and pace(None, 0.5) == 0.5
+    assert pace("BIKE", 1.0) == 1.0
+    assert pace("BIKE", 0.25) == pytest.approx(0.5)  # a jam that quarters a car's speed only halves a bike's
+    assert pace("AUTO", 1.0) == pytest.approx(0.8)
+    assert pace("AUTO", 0.25) < pace("BIKE", 0.25)

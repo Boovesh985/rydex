@@ -97,6 +97,7 @@ export class FollowCamera {
   private speed = 0;
   private zoom: number;
   private zoomTarget: number;
+  private readonly bias: number;
   private pitch: number;
   private pitchTarget: number;
   private yaw = 0;
@@ -111,13 +112,18 @@ export class FollowCamera {
   private readonly disabled: Handler[] = [];
   private readonly off: (() => void)[] = [];
 
-  constructor(map: MlMap, getCar: () => FollowedCar | null, options: { reducedMotion?: boolean } = {}) {
+  /**
+   * @param options.zoomBias zoom levels closer than the views (tuned for a 4 m car), for a smaller
+   *   vehicle: a bike or an auto
+   */
+  constructor(map: MlMap, getCar: () => FollowedCar | null, options: { reducedMotion?: boolean; zoomBias?: number } = {}) {
     this.map = map;
     this.getCar = getCar;
     this.reduced = !!options.reducedMotion;
+    this.bias = options.zoomBias ?? 0;
     this.view = VIEWS[useMapPrefs.getState().camera];
     this.zoom = map.getZoom();
-    this.zoomTarget = this.view.zoom;
+    this.zoomTarget = this.view.zoom + this.bias;
     this.pitch = map.getPitch();
     this.pitchTarget = this.view.pitch;
     const padding = map.getPadding();
@@ -148,7 +154,7 @@ export class FollowCamera {
   /** A new view: zoom, tilt and placement ease over; any orbit is let go. */
   setView(view: CameraView) {
     this.view = VIEWS[view];
-    this.zoomTarget = this.view.zoom;
+    this.zoomTarget = clamp(this.view.zoom + this.bias, FOLLOW_MIN_ZOOM, FOLLOW_MAX_ZOOM);
     this.pitchTarget = this.view.pitch;
     this.yawTarget = 0;
   }

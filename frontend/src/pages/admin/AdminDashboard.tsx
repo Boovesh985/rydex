@@ -4,19 +4,19 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { adminApi, ridesApi } from '../../api/endpoints';
 import { errorMessage } from '../../api/http';
-import type { Page, Payment, Ride, RideType } from '../../api/types';
+import { RIDE_TYPES, type Page, type Payment, type Ride } from '../../api/types';
 import { PaymentBadge } from '../../components/PaymentPanel';
 import { RealisticBar, RealisticButton } from '../../components/Realistic';
 import { RideStatusChip } from '../../components/RideStatusChip';
 import { Button, ErrorNote, Eyebrow } from '../../components/ui';
 import { clock, inr, minutes, rideTypeLabel, shortAddress, when } from '../../lib/format';
 import type { LatLng } from '../../lib/geo';
+import { VEHICLE_PAINT } from '../../lib/vehicles';
 import { BaseMap, DemandHeat, DispatchLines, Fleet, GridOverlay, MapMoves, RiderMarkers, type GridCellShape } from '../../map/MapView';
 import { TRAFFIC_COLORS } from '../../map/traffic';
 import { useRealistic } from '../../map/useRealistic';
 import { cityView } from './city';
 
-const TYPE_COLOR: Record<RideType, string> = { ECONOMY: '#ffc21a', COMFORT: '#f2f3ef', XL: '#2c313a' };
 /** the living city's centre (ADR 0016): T Nagar, so the old city, the beach and the IT corridor are in view */
 const CITY: LatLng = [13.045, 80.245];
 
@@ -143,9 +143,9 @@ function Legend() {
   return (
     <div className="space-y-2 text-xs text-slate" aria-label="Legend">
       <div className="flex flex-wrap gap-3">
-        {(Object.keys(TYPE_COLOR) as RideType[]).map((t) => (
+        {RIDE_TYPES.map((t) => (
           <span key={t} className="flex items-center gap-1">
-            <span className={swatch} style={{ background: TYPE_COLOR[t] }} /> {rideTypeLabel[t]}
+            <span className={swatch} style={{ background: VEHICLE_PAINT[t].body }} /> {rideTypeLabel[t]}
           </span>
         ))}
         <span className="flex items-center gap-1">

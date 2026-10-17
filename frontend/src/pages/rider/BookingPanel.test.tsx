@@ -35,6 +35,9 @@ describe('BookingPanel', () => {
     expect(await screen.findByRole('radio', { name: /Economy/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /Comfort.*₹168.*5 min away/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /XL.*No cars nearby/ })).toBeInTheDocument();
+    // a bike taxi seats one, an auto three
+    expect(screen.getByRole('radio', { name: /^Bike1Bike taxi.*₹58.*2 min away/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^Auto3Auto rickshaw.*₹90.*No autos nearby/ })).toBeInTheDocument();
     expect(screen.getByRole('status', { name: /Fare, fixed upfront: ₹124/ })).toBeInTheDocument();
     expect(ridesApi.estimate).toHaveBeenCalledWith(CENTRAL, MARINA);
   });

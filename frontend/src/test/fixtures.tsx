@@ -29,6 +29,8 @@ export const estimate: Estimate = {
   surgeMultiplier: 1,
   route: { polyline: null, source: 'ESTIMATED' },
   options: [
+    { rideType: 'BIKE', fare: 58, etaMinutes: 2, driversNearby: 5 },
+    { rideType: 'AUTO', fare: 90, etaMinutes: null, driversNearby: 0 },
     { rideType: 'ECONOMY', fare: 124, etaMinutes: 3, driversNearby: 4 },
     { rideType: 'COMFORT', fare: 168, etaMinutes: 5, driversNearby: 2 },
     { rideType: 'XL', fare: 233, etaMinutes: null, driversNearby: 0 },

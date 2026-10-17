@@ -26,9 +26,24 @@ export const when = (iso: string | null | undefined) => (iso ? dateFormat.format
 export const shortAddress = (address: string | null | undefined, fallback = 'Pinned location') =>
   address?.split(',')[0]?.trim() || fallback;
 
-export const rideTypeLabel = { ECONOMY: 'Economy', COMFORT: 'Comfort', XL: 'XL' } as const;
+export const rideTypeLabel = { BIKE: 'Bike', AUTO: 'Auto', ECONOMY: 'Economy', COMFORT: 'Comfort', XL: 'XL', PREMIUM: 'Premium' } as const;
 export const rideTypeBlurb = {
+  BIKE: 'Bike taxi · helmet provided, beats the traffic',
+  AUTO: 'Auto rickshaw · 3 seats',
   ECONOMY: 'Hatchbacks · 4 seats',
   COMFORT: 'Sedans · 4 seats, more legroom',
   XL: 'MUVs · 6 seats',
+  PREMIUM: 'Premium sedans · 4 seats, top-rated drivers',
+} as const;
+export const rideTypeSeats = { BIKE: 1, AUTO: 3, ECONOMY: 4, COMFORT: 4, XL: 6, PREMIUM: 4 } as const;
+/** What the vehicle is called in a sentence: "your bike", "your auto", "your car". */
+export const vehicleNoun = (type: keyof typeof rideTypeLabel | null | undefined) => (type === 'BIKE' ? 'bike' : type === 'AUTO' ? 'auto' : 'car');
+/** A make and model to suggest when registering a vehicle of this type. */
+export const vehicleModelHint = {
+  BIKE: 'Hero Splendor Plus',
+  AUTO: 'Bajaj RE',
+  ECONOMY: 'Maruti Suzuki Swift',
+  COMFORT: 'Honda City',
+  XL: 'Toyota Innova Crysta',
+  PREMIUM: 'Toyota Camry',
 } as const;

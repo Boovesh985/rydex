@@ -9,6 +9,7 @@ import type { RideType } from '../api/types';
 import { config } from '../config';
 import { bearing, haversine, lerp, lerpHeading, PathIndex, type LatLng } from '../lib/geo';
 import { decodePolyline } from '../lib/polyline';
+import { topDownSvg, vehicleKind } from '../lib/vehicles';
 import { Atmosphere } from './Atmosphere';
 import type { CarLayer, CarPose } from './car3d';
 import { cameraBus, dampAngle, FollowCamera } from './followCamera';
@@ -327,23 +328,14 @@ export function DropPin({ at }: { at: LatLng }) {
   return null;
 }
 
-const CAR_COLORS: Record<RideType, string> = { ECONOMY: '#ffc21a', COMFORT: '#f2f3ef', XL: '#2c313a' };
-
-/** A top-down car (flat on the road in 3D), with a soft shadow. */
+/** A top-down car, bike or auto (flat on the road in 3D), with a soft shadow. */
 function carElement(type: RideType | null | undefined, size: number, label: string): HTMLElement {
-  const color = type ? CAR_COLORS[type] : '#ffc21a';
   const el = document.createElement('div');
   el.className = 'rx-car';
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', label);
   el.title = label;
-  el.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true">
-    <ellipse cx="20" cy="21" rx="10" ry="17" fill="rgba(0,0,0,.22)"/>
-    <rect x="11" y="3" width="18" height="34" rx="7" fill="${color}" stroke="#16181d" stroke-width="2"/>
-    <path d="M13.5 12.5 Q20 9.5 26.5 12.5 L25.5 17 Q20 15.5 14.5 17Z" fill="#16181d"/>
-    <path d="M14.5 27 Q20 28.5 25.5 27 L26 31 Q20 33 14 31Z" fill="#16181d" opacity=".8"/>
-    <rect x="13" y="3.6" width="4" height="2" rx="1" fill="#fff6c8"/><rect x="23" y="3.6" width="4" height="2" rx="1" fill="#fff6c8"/>
-  </svg>`;
+  el.innerHTML = topDownSvg(type, size);
   return el;
 }
 
@@ -366,6 +358,8 @@ interface AnimatedCarProps {
   speed?: number | null;
   /** realistic mode: the chase camera rides behind the car */
   follow?: boolean;
+  /** a rider on board (a bike's pillion, an auto's passengers are drawn) */
+  carrying?: boolean;
   label?: string;
 }
 
@@ -376,7 +370,7 @@ interface AnimatedCarProps {
  * of stopping to wait for a late fix. In realistic mode it is a 3D model and the chase camera
  * ({@link FollowCamera}) can ride behind it.
  */
-export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = null, speed = null, follow = false, label = 'Your driver' }: AnimatedCarProps) {
+export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = null, speed = null, follow = false, carrying = false, label = 'Your driver' }: AnimatedCarProps) {
   const { map, realistic, cars, followerRef } = useMapState();
   const id = useId();
   const shown = useRef<Pose | null>(null);
@@ -384,15 +378,15 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
   const shownAlong = useRef<{ index: PathIndex; along: number } | null>(null);
   const lastFix = useRef<number | null>(null);
   const fixInterval = useRef<number | null>(null);
-  const live = useRef({ cars, type, speed });
+  const live = useRef({ cars, type, speed, carrying });
   useEffect(() => {
-    live.current = { cars, type, speed };
+    live.current = { cars, type, speed, carrying };
   });
   const index = useMemo(() => (route && route.length > 1 ? new PathIndex(route) : null), [route]);
 
   const draw = (pose: Pose) => {
-    const { cars: layer, type: t, speed: v } = live.current;
-    if (layer) layer.set(id, { lat: pose.lat, lng: pose.lng, heading: pose.heading, speed: v ?? 0, type: t, focus: true } satisfies CarPose);
+    const { cars: layer, type: t, speed: v, carrying: aboard } = live.current;
+    if (layer) layer.set(id, { lat: pose.lat, lng: pose.lng, heading: pose.heading, speed: v ?? 0, type: t, focus: true, carrying: aboard } satisfies CarPose);
     else if (marker.current) {
       marker.current.setLngLat([pose.lng, pose.lat]);
       marker.current.setRotation(pose.heading);
@@ -431,7 +425,8 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
         const pose = shown.current ?? { lat, lng, heading: heading ?? 0 };
         return { ...pose, speed: live.current.speed ?? 0 };
       },
-      { reducedMotion: reducedMotion() },
+      // a bike or an auto is smaller than the car the views are tuned for: ride in closer
+      { reducedMotion: reducedMotion(), zoomBias: { bike: 0.8, auto: 0.4, car: 0 }[vehicleKind(live.current.type)] },
     );
     return () => {
       camera.dispose();
@@ -660,7 +655,7 @@ export function Fleet({ cars: fleet, glideMs = 2800 }: { cars: FleetCar[]; glide
           m.setRotation(pose.heading);
         }
         if (layer) {
-          layer.set(car.id, { ...pose, speed: car.duty === 'free' ? 4 : 9, type: car.type, duty: car.duty });
+          layer.set(car.id, { ...pose, speed: car.duty === 'free' ? 4 : 9, type: car.type, duty: car.duty, carrying: car.duty === 'trip' });
           drawn.current.add(car.id);
         }
       }

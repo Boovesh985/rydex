@@ -114,9 +114,12 @@ rydex:
     sweep-interval: 30s
     # charged when the rider cancels after the driver has arrived (ADR 0012); earlier cancellations are free
     cancellation-fees:
+      BIKE: 20
+      AUTO: 30
       ECONOMY: 50
       COMFORT: 75
       XL: 100
+      PREMIUM: 125
   geo:
     osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
     nominatim-base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
@@ -132,9 +135,12 @@ rydex:
   fares:
     max-surge: 2.5
     tariffs:
+      BIKE:    { base: 20, per-km: 6, per-min: 0.5, minimum: 30 }
+      AUTO:    { base: 30, per-km: 9, per-min: 1.0, minimum: 40 }
       ECONOMY: { base: 40, per-km: 12, per-min: 1.5, minimum: 60 }
       COMFORT: { base: 60, per-km: 16, per-min: 2.0, minimum: 90 }
       XL:      { base: 90, per-km: 22, per-min: 2.5, minimum: 140 }
+      PREMIUM: { base: 120, per-km: 28, per-min: 3.0, minimum: 200 }
   rate-limits:
     enabled: true
     per-minute:

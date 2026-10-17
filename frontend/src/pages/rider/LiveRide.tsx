@@ -127,6 +127,7 @@ function RideScreen({ rideId }: { rideId: string }) {
             route={r.status === 'DRIVER_ARRIVED' ? null : routePoints}
             type={driver.data?.vehicleType ?? r.rideType}
             follow={rx.following}
+            carrying={r.status === 'IN_PROGRESS'}
           />
         )}
         <FitTo points={fit} refit={refit} />
@@ -269,7 +270,7 @@ function RidePin({ pin, here }: { pin: string; here: boolean }) {
       <div>
         <p className="font-bold">{here ? 'Tell your driver this PIN' : 'Your ride PIN'}</p>
         <p className={`text-sm ${here ? '' : 'text-slate'}`}>
-          {here ? 'They type it in to start the trip. Never share it before you are in the car.' : 'Your driver asks for it at pickup to start the trip.'}
+          {here ? 'They type it in to start the trip. Never share it before you are on board.' : 'Your driver asks for it at pickup to start the trip.'}
         </p>
       </div>
       <PinTiles pin={pin} />

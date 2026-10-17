@@ -50,20 +50,28 @@ cd simulator; pip install -r requirements.txt; python simulate.py --city
   - cars carrying riders (teal);
   - riders waiting at their pickups.
 
+**Ride types.** One app for every way people get around the city (ADR 18), cheapest first:
+- **Bike:** a motorbike taxi for one, helmet provided; it weaves through traffic.
+- **Auto:** an auto rickshaw with three seats.
+- **Cabs:** Economy (hatchback), Comfort (sedan), XL (six-seat MUV) and Premium (premium sedan).
+
 **Try a ride.**
-- **Book:** sign in as `rider1@rydex.dev` (the demo buttons fill it in). The free cars around you drive about on the map. Search or tap the map for a drop, pick a ride type and book.
+- **Book:** sign in as `rider1@rydex.dev` (the demo buttons fill it in). The free bikes, autos and cabs around you drive about on the map. Search or tap the map for a drop, pick a ride type and book.
 - **Ride:** a nearby automated driver accepts and drives to you. They wait at the pickup for your PIN, then start the trip and drive you to the drop. The car moves live on your map.
 - **Drive:** sign in as `driver01@rydex.dev` in a second browser (or a private window), switch on **Simulate driving** and go online. Real people come first in matching:
   - you get the offer for any automated rider's ride within 3 km before the automated drivers do;
   - at the pickup, the automated rider "reads out" their PIN on your screen, and you type it in.
-- **Both sides yourself:** with driver01 online, rider1's rides go to you first (anywhere within 8 km), as long as you book driver01's ride type, Economy.
+- **Both sides yourself:** with driver01 online, rider1's rides go to you first (anywhere within 8 km), as long as you book driver01's ride type (Economy, unless you change it: while offline, **Change vehicle** turns driver01 into a bike, an auto or any cab).
 - **Watch:** sign in as `admin@rydex.dev` for the operations map: the living city, the geohash grid matching uses, demand and KPIs, and every ride in flight (open one to watch it live).
 
 **Realistic 3D.** On the booking map, a live ride, the driver dashboard, a trip page or the operations map, press **Realistic 3D**:
 - the map tilts, buildings rise, and at street level everything is life-size: asphalt roads with pavements and lane lines;
 - streets get broadleaf trees, coconut palms swaying in the breeze, and street lights;
 - the sun (or the moon and stars) sits where it really is over Chennai, and clouds drift by behind the buildings;
-- the car becomes a detailed 3D model (number plates, rims, a lit taxi sign) that steers into turns, leans in corners, and shows brake lights and indicators;
+- the vehicle becomes a detailed 3D model that steers into turns and shows brake lights and indicators:
+  - a cab (number plates, rims, a lit taxi sign) leans out of corners;
+  - a bike's rider wears a helmet, and a pillion rides behind on a trip; the bike leans into the turns;
+  - an auto has its driver up front under the canopy, and passengers on the back bench during a trip;
 - a chase camera rides behind it, with a speedometer and the ETA overhead.
 
 Moving the camera:
@@ -74,7 +82,7 @@ Every map has two switches by its zoom buttons:
 - **traffic:** Google-style green, orange, red and dark red on the main roads. It is simulated, and the automated cars slow down in it.
 - **day/night/auto:** the night city has glowing street lights and headlights.
 
-Maps are MapLibre vector maps on free OpenFreeMap tiles. The 3D cars and scenery are drawn with three.js (ADR 15, ADR 16, ADR 17).
+Maps are MapLibre vector maps on free OpenFreeMap tiles. The 3D vehicles and scenery are drawn with three.js (ADR 15, ADR 16, ADR 17, ADR 18).
 
 The web app talks to one origin: the Vite dev server forwards each `/api` prefix and `/ws` to its service (ADR 13).
 The simulator signs in at most 15 accounts a minute, so the whole city takes about 5 minutes to come in. Automated
@@ -134,7 +142,7 @@ Locally the service uses published development keys and says so in its log. A de
 Back up `PII_DATA_KEY` with the database: without it the stored emails and phone numbers cannot be read.
 
 Demo accounts (seeded): `admin@rydex.dev`, `rider1..60@rydex.dev`, `driver01..50@rydex.dev`, all with password `Rydex@123`.
-Drivers 01–30 drive ECONOMY, 31–42 COMFORT and 43–50 XL. All of them start offline. `rider1` and `driver01` are for
+Drivers 01–12 drive ECONOMY, 13–19 COMFORT, 20–23 XL, 24–26 PREMIUM, 27–39 BIKE and 40–50 AUTO. All of them start offline. `rider1` and `driver01` are for
 testing by hand; riders 2–60 and drivers 02–50 are the automated (NPC) accounts the simulator plays.
 
 Every service trusts the same token, so sign in once on ride-service (`POST /api/auth/login`) and paste the
@@ -163,4 +171,4 @@ docs/adr/             architecture decision records
 ```
 
 ## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16), the chase camera and a life-size street (ADR 17).
+See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16), the chase camera and a life-size street (ADR 17), bikes, autos and cabs in one app (ADR 18).

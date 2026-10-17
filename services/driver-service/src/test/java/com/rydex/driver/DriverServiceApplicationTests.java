@@ -25,7 +25,8 @@ class DriverServiceApplicationTests extends IntegrationTest {
                 .query((rs, i) -> Map.entry(rs.getString(1), rs.getInt(2)))
                 .list().stream().collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
-        assertThat(byType).containsExactlyInAnyOrderEntriesOf(Map.of("ECONOMY", 30, "COMFORT", 12, "XL", 8));
+        assertThat(byType).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "ECONOMY", 12, "COMFORT", 7, "XL", 4, "PREMIUM", 3, "BIKE", 13, "AUTO", 11));
         assertThat(jdbc.sql("SELECT count(DISTINCT upper(vehicle_number)) FROM drivers WHERE user_id::text LIKE '00000000-0000-4000-8000-0000000002%'")
                 .query(Integer.class).single()).isEqualTo(50);
     }

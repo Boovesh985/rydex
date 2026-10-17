@@ -6,7 +6,8 @@ import { errorMessage } from '../../api/http';
 import type { Estimate, GeoPoint, Ride, RideOption, RideType } from '../../api/types';
 import { PlaceSearch } from '../../components/PlaceSearch';
 import { Button, ErrorNote, Eyebrow, Meter, Spinner } from '../../components/ui';
-import { distance, inr, minutes, rideTypeBlurb, rideTypeLabel } from '../../lib/format';
+import { VehicleIcon } from '../../components/VehicleIcon';
+import { distance, inr, minutes, rideTypeBlurb, rideTypeLabel, rideTypeSeats, vehicleNoun } from '../../lib/format';
 
 const pickupDot = <span className="block size-3.5 rounded-full border-[3.5px] border-ink bg-paper" />;
 const dropDot = <span className="block size-3.5 rounded-[3px] bg-ink" />;
@@ -130,7 +131,7 @@ export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusFi
 }
 
 function OptionCard({ option, selected, onSelect }: { option: RideOption; selected: boolean; onSelect: () => void }) {
-  const seats = option.rideType === 'XL' ? 6 : 4;
+  const seats = rideTypeSeats[option.rideType];
   return (
     <button
       type="button"
@@ -141,6 +142,7 @@ function OptionCard({ option, selected, onSelect }: { option: RideOption; select
         selected ? 'bg-paper ring-[2.5px] ring-ink' : 'bg-chalk ring-1 ring-transparent hover:ring-mist'
       }`}
     >
+      <VehicleIcon type={option.rideType} className="h-8 w-14 shrink-0" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="font-display-wide text-base font-black">{rideTypeLabel[option.rideType]}</span>
@@ -154,7 +156,7 @@ function OptionCard({ option, selected, onSelect }: { option: RideOption; select
         <span className="block font-mono text-lg font-bold tabular">{inr(option.fare)}</span>
         <span className={`flex items-center justify-end gap-1 text-xs ${option.etaMinutes == null ? 'text-signal' : 'text-slate'}`}>
           <Clock3 className="size-3" aria-hidden />
-          {option.etaMinutes == null ? 'No cars nearby' : `${Math.max(1, option.etaMinutes)} min away`}
+          {option.etaMinutes == null ? `No ${vehicleNoun(option.rideType)}s nearby` : `${Math.max(1, option.etaMinutes)} min away`}
         </span>
       </span>
     </button>

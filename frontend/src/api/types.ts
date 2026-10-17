@@ -1,8 +1,9 @@
 /** Types of the Rydex REST and WebSocket APIs (see /contracts and each service's OpenAPI). */
 
 export type Role = 'RIDER' | 'DRIVER' | 'ADMIN';
-export type RideType = 'ECONOMY' | 'COMFORT' | 'XL';
-export const RIDE_TYPES: RideType[] = ['ECONOMY', 'COMFORT', 'XL'];
+/** A bike taxi, an auto rickshaw, and four kinds of cab (ADR 0018), cheapest first. */
+export type RideType = 'BIKE' | 'AUTO' | 'ECONOMY' | 'COMFORT' | 'XL' | 'PREMIUM';
+export const RIDE_TYPES: RideType[] = ['BIKE', 'AUTO', 'ECONOMY', 'COMFORT', 'XL', 'PREMIUM'];
 
 export type RideStatus =
   | 'REQUESTED'

@@ -23,7 +23,7 @@ log = logging.getLogger("rydex.sim")
 POLL_S = 4.0  # how often a rider looks at their ride
 ACTIVE = ("REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ARRIVED", "IN_PROGRESS")
 # share of trips per ride type
-RIDE_TYPES = (("ECONOMY", 0.65), ("COMFORT", 0.25), ("XL", 0.10))
+RIDE_TYPES = (("BIKE", 0.3), ("AUTO", 0.25), ("ECONOMY", 0.22), ("COMFORT", 0.12), ("XL", 0.07), ("PREMIUM", 0.04))
 
 
 class PinBoard:

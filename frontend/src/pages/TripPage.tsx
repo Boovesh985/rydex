@@ -11,7 +11,7 @@ import { RealisticButton, RealisticHud, TripProgress } from '../components/Reali
 import { RideStatusChip } from '../components/RideStatusChip';
 import { RideTimeline } from '../components/RideTimeline';
 import { ErrorNote, Eyebrow, Meter, Plate, Sheet, Spinner } from '../components/ui';
-import { distance, inr, minutes, rideTypeLabel, shortAddress, when } from '../lib/format';
+import { distance, inr, minutes, rideTypeLabel, shortAddress, vehicleNoun, when } from '../lib/format';
 import { haversine, pathLength, type LatLng } from '../lib/geo';
 import { decodePolyline } from '../lib/polyline';
 import { AnimatedCar, BaseMap, DropPin, FitTo, PickupPin, RouteLine } from '../map/MapView';
@@ -133,7 +133,8 @@ function Trip({ rideId }: { rideId: string }) {
             route={followed}
             type={driver.data?.vehicleType ?? r?.rideType}
             follow={rx.following}
-            label={driver.data ? `${driver.data.name}'s car` : 'The car'}
+            carrying={r?.status === 'IN_PROGRESS'}
+            label={driver.data ? `${driver.data.name}'s ${vehicleNoun(driver.data.vehicleType)}` : `The ${vehicleNoun(r?.rideType)}`}
           />
         )}
         <FitTo points={fit} refit={refit} />

@@ -64,6 +64,17 @@ class Stats:
                 f"{self.errors} errors | {mins:.0f} min")
 
 
+# how each vehicle copes with the city's traffic: (share of a car's speed, how much of a jam it feels).
+# A bike filters past queues (a jam slows it less: factor ** 0.5), an auto is slow but small.
+PACE = {"BIKE": (1.0, 0.5), "AUTO": (0.8, 0.8)}
+
+
+def pace(vehicle: str | None, jam: float) -> float:
+    """Speed multiplier for a vehicle in traffic that slows a car to `jam` of its free-flow speed."""
+    share, feel = PACE.get(vehicle or "", (1.0, 1.0))
+    return share * jam ** feel
+
+
 class TripOver(Exception):
     """The current ride ended early (the rider cancelled, or it is gone)."""
 
@@ -81,6 +92,7 @@ class SimDriver:
         self.heading = 0.0
         self.speed = 0.0  # m/s
         self.ride_id: str | None = None
+        self.vehicle: str | None = None
         self.online = False
         self.stomp: StompClient | None = None
         self.offers: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -92,7 +104,7 @@ class SimDriver:
 
     async def run(self) -> None:
         me = await self.session.call("GET", "/api/drivers/me")
-        vehicle = me["vehicleType"]
+        vehicle = self.vehicle = me["vehicleType"]
         if me.get("lastLocation"):
             last = (me["lastLocation"]["lat"], me["lastLocation"]["lng"])
             if haversine(last, self.s.center) < self.s.radius_m * 1.5:
@@ -410,7 +422,7 @@ class SimDriver:
             await asyncio.sleep(TICK_S)
             # traffic on the main roads (the same as the map shows)
             jam = self.s.roads.speed_factor_at(self.pos, time.time()) if self.s.roads else 1.0
-            step = mps * jam * self.s.speedup * TICK_S * self.rng.uniform(0.85, 1.12)
+            step = mps * pace(self.vehicle, jam) * self.s.speedup * TICK_S * self.rng.uniform(0.85, 1.12)
             travelled += step
             self.pos, self.heading, done = along(path, travelled)
             self.speed = step / TICK_S

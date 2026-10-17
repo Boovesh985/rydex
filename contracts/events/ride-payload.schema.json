@@ -10,7 +10,7 @@
       "type": ["string", "null"], "format": "uuid",
       "description": "Set from DRIVER_ASSIGNED onwards."
     },
-    "rideType": { "enum": ["ECONOMY", "COMFORT", "XL", null] },
+    "rideType": { "enum": ["BIKE", "AUTO", "ECONOMY", "COMFORT", "XL", "PREMIUM", null] },
     "pickup": { "$ref": "#/$defs/geoPoint" },
     "drop": { "$ref": "#/$defs/geoPoint" },
     "fare": {

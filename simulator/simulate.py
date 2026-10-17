@@ -34,8 +34,9 @@ RESERVED_DRIVER = 1
 RESERVED_RIDER = 1
 # --city: the living city, centred on T Nagar so it covers the old city, the beach and the IT corridor
 CITY = {"drivers": 40, "riders": 30, "center": "13.0450,80.2450", "radius_km": 7.0}
-# seeded driver NN drives ECONOMY for 1-30, COMFORT for 31-42, XL for 43-50
-TYPES = {"ECONOMY": range(1, 31), "COMFORT": range(31, 43), "XL": range(43, 51)}
+# the seeded fleet (driver-service R__seed_demo_drivers, ADR 0018): which vehicle driver NN drives
+TYPES = {"ECONOMY": range(1, 13), "COMFORT": range(13, 20), "XL": range(20, 24), "PREMIUM": range(24, 27),
+         "BIKE": range(27, 40), "AUTO": range(40, 51)}
 
 log = logging.getLogger("rydex.sim")
 

@@ -8,14 +8,14 @@ import { RealisticButton, RealisticHud, TripProgress } from '../../components/Re
 import { toast } from '../../components/toastStore';
 import { Button, ErrorNote, Eyebrow, Meter, PinTiles, Plate, Sheet, Spinner } from '../../components/ui';
 import { config } from '../../config';
-import { distance, inr, rideTypeLabel, shortAddress } from '../../lib/format';
+import { distance, inr, rideTypeLabel, shortAddress, vehicleNoun } from '../../lib/format';
 import { haversine, type LatLng } from '../../lib/geo';
 import { AnimatedCar, BaseMap, DropPin, FitTo, MapClicks, PickupPin, RouteLine } from '../../map/MapView';
 import { useFollowedRoute, type Leg } from '../../map/useFollowedRoute';
 import { useRealistic } from '../../map/useRealistic';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
 import { realtime } from '../../realtime/stomp';
-import { Onboarding } from './Onboarding';
+import { Onboarding, VehicleForm } from './Onboarding';
 import { OfferModal } from './OfferModal';
 import { useGpsPosition, useLocationReporter, useSimulatedPosition, type Position } from './usePosition';
 
@@ -87,6 +87,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
   const [offerBusy, setOfferBusy] = useState<'accept' | 'reject' | null>(null);
   const [offerError, setOfferError] = useState('');
   const [refit, setRefit] = useState(0);
+  const [changingVehicle, setChangingVehicle] = useState(false);
   const rx = useRealistic(online);
 
   const rideId = profile.currentRideId;
@@ -221,7 +222,8 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
             route={routePoints}
             type={profile.vehicleType}
             follow={rx.following}
-            label="Your car"
+            carrying={r?.status === 'IN_PROGRESS'}
+            label={`Your ${vehicleNoun(profile.vehicleType)}`}
           />
         )}
         <FitTo points={fit} refit={refit} />
@@ -259,36 +261,45 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
         </RealisticHud>
       ) : (
         <Sheet>
-          <div className="space-y-4">
-            <StatusBar profile={profile} online={online} busy={toggle.isPending} onToggle={() => toggle.mutate()} />
-            <ErrorNote>{toggle.error && errorMessage(toggle.error)}</ErrorNote>
-            {!simulate && online && gps.error && <ErrorNote>{gps.error}</ErrorNote>}
+          {changingVehicle && !online ? (
+            <VehicleForm profile={profile} onDone={() => setChangingVehicle(false)} />
+          ) : (
+            <div className="space-y-4">
+              <StatusBar profile={profile} online={online} busy={toggle.isPending} onToggle={() => toggle.mutate()} />
+              <ErrorNote>{toggle.error && errorMessage(toggle.error)}</ErrorNote>
+              {!simulate && online && gps.error && <ErrorNote>{gps.error}</ErrorNote>}
 
-            {r ? (
-              <TripPanel ride={r} pos={pos} away={away} toPickup={toPickup} progress={progress} />
-            ) : (
-              <>
-                {online ? (
-                  <div className="flex items-center gap-3 rounded-xl bg-chalk p-3">
-                    <span className="relative grid size-3 place-items-center" aria-hidden>
-                      <span className="rx-pulse absolute size-3 rounded-full bg-go" />
-                      <span className="size-3 rounded-full bg-go" />
-                    </span>
-                    <p className="text-sm">
-                      <strong>You're online.</strong> Ride requests near you will pop up here.
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate">Go online to start getting ride requests.</p>
-                )}
-                <Earnings />
-              </>
-            )}
+              {r ? (
+                <TripPanel ride={r} pos={pos} away={away} toPickup={toPickup} progress={progress} />
+              ) : (
+                <>
+                  {online ? (
+                    <div className="flex items-center gap-3 rounded-xl bg-chalk p-3">
+                      <span className="relative grid size-3 place-items-center" aria-hidden>
+                        <span className="rx-pulse absolute size-3 rounded-full bg-go" />
+                        <span className="size-3 rounded-full bg-go" />
+                      </span>
+                      <p className="text-sm">
+                        <strong>You're online.</strong> Ride requests near you will pop up here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-slate">Go online to start getting ride requests.</p>
+                      <Button variant="quiet" onClick={() => setChangingVehicle(true)}>
+                        Change vehicle
+                      </Button>
+                    </div>
+                  )}
+                  <Earnings />
+                </>
+              )}
 
-            {config.simulator && (
-              <SimulatorControls on={simulate} onChange={setSim} speed={speedKmh} onSpeed={setSpeedKmh} driving={!!routePoints} />
-            )}
-          </div>
+              {config.simulator && (
+                <SimulatorControls on={simulate} onChange={setSim} speed={speedKmh} onSpeed={setSpeedKmh} driving={!!routePoints} />
+              )}
+            </div>
+          )}
         </Sheet>
       )}
       {offer && profile.status === 'AVAILABLE' && (
@@ -534,7 +545,7 @@ function SimulatorControls({ on, onChange, speed, onSpeed, driving }: { on: bool
       <label className="flex items-center justify-between gap-3">
         <span>
           <span className="block text-sm font-bold">Simulate driving</span>
-          <span className="block text-xs text-slate">Demo mode: the car drives the route by itself.</span>
+          <span className="block text-xs text-slate">Demo mode: the vehicle drives the route by itself.</span>
         </span>
         <input type="checkbox" role="switch" aria-label="Simulate driving" className="size-5 accent-[#16181d]" checked={on} onChange={(e) => onChange(e.target.checked)} />
       </label>
@@ -548,7 +559,7 @@ function SimulatorControls({ on, onChange, speed, onSpeed, driving }: { on: bool
               <option value={400}>10× faster</option>
             </select>
           </label>
-          {!driving && <p className="text-xs text-slate">Tap the map to put your car somewhere else.</p>}
+          {!driving && <p className="text-xs text-slate">Tap the map to put your vehicle somewhere else.</p>}
         </>
       )}
     </div>
