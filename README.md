@@ -67,11 +67,12 @@ Everything runs locally with Docker, and the deployment plan uses free tiers onl
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     web["Web app<br/>React · MapLibre · three.js"]
     sim["Simulator<br/>NPC drivers + riders"]
 
     subgraph services["Spring Boot services"]
+        direction LR
         ride["ride-service :8081<br/>auth · booking · state machine"]
         driver["driver-service :8082<br/>availability · matching · offers"]
         tracking["tracking-service :8083<br/>STOMP WebSocket · live ETA"]
@@ -88,7 +89,7 @@ flowchart LR
     services <-- "events (outbox, idempotent consumers)" --> kafka
     services --> pg
     services --> redis
-    payment --> rzp
+    services -- "payments" --> rzp
 ```
 
 A booking flows `RIDE_REQUESTED → DRIVER_ASSIGNED → DRIVER_ARRIVED → IN_PROGRESS → COMPLETED`; each step is an event that the other services consume exactly once (idempotent consumers), and every event reaches the rider and driver live through tracking-service. The decisions behind each piece are written up as [architecture decision records](docs/adr).
