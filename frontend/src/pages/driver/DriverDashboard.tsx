@@ -286,7 +286,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
                   ) : (
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm text-slate">Go online to start getting ride requests.</p>
-                      <Button variant="quiet" onClick={() => setChangingVehicle(true)}>
+                      <Button variant="quiet" className="shrink-0 whitespace-nowrap px-4" onClick={() => setChangingVehicle(true)}>
                         Change vehicle
                       </Button>
                     </div>

@@ -40,7 +40,8 @@ export function VehicleForm({ profile, onDone }: { profile?: DriverProfile; onDo
         <h1 className="font-display-wide text-2xl font-black">{profile ? 'Change your vehicle' : 'Add your vehicle'}</h1>
         <p className="text-sm text-slate">Drive a bike taxi, an auto or a cab. Riders see these details when you pick them up.</p>
       </div>
-      <fieldset className="space-y-2">
+      {/* min-w-0: a fieldset will not shrink below its content by default, and the rows ran off a phone */}
+      <fieldset className="min-w-0 space-y-2">
         <legend className="mb-1 text-sm font-bold">Ride type</legend>
         {RIDE_TYPES.map((t) => (
           <label
@@ -49,8 +50,10 @@ export function VehicleForm({ profile, onDone }: { profile?: DriverProfile; onDo
           >
             <input type="radio" name="type" className="sr-only" checked={type === t} onChange={() => setType(t)} />
             <VehicleIcon type={t} className="h-7 w-12 shrink-0" />
-            <span className="font-display-wide font-black">{rideTypeLabel[t]}</span>
-            <span className="ml-auto truncate text-right text-sm text-slate">{rideTypeBlurb[t]}</span>
+            <span className="min-w-0">
+              <span className="block font-display-wide font-black">{rideTypeLabel[t]}</span>
+              <span className="block truncate text-sm text-slate">{rideTypeBlurb[t]}</span>
+            </span>
           </label>
         ))}
       </fieldset>

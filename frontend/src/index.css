@@ -75,6 +75,14 @@
   height: 36px !important;
 }
 
+/* a finger needs more room than a mouse pointer */
+@media (pointer: coarse) {
+  .maplibregl-ctrl-group button {
+    width: 44px !important;
+    height: 44px !important;
+  }
+}
+
 .maplibregl-ctrl-bottom-right {
   bottom: 8px;
 }
