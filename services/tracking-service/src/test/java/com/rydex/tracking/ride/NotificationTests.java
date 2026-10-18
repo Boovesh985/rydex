@@ -85,6 +85,34 @@ class NotificationTests extends IntegrationTest {
     }
 
     @Test
+    void aTripEndedBecauseItsDriverVanishedReachesBoth() {
+        TestRide ride = newRide();
+        try (StompTestClient rider = connect(TestTokens.rider(ride.riderId()));
+             StompTestClient driver = connect(TestTokens.driver(ride.driverId()))) {
+            var riderInbox = rider.subscribe("/user/queue/notifications");
+            var driverInbox = driver.subscribe("/user/queue/notifications");
+            publish(EventType.RIDE_REQUESTED, ride);
+            next(riderInbox);
+            publish(EventType.DRIVER_ASSIGNED, ride);
+            next(riderInbox);
+            next(driverInbox);
+            publish(EventType.DRIVER_ARRIVED, ride);
+            next(riderInbox);
+            publish(EventType.RIDE_STARTED, ride);
+            next(riderInbox);
+
+            // ride-service's abandoned-ride sweeper: only the system cancels a trip under way
+            publish(EventType.RIDE_CANCELLED, ride, "The driver stopped responding, so the ride was ended. You were not charged.");
+
+            JsonNode ended = next(riderInbox);
+            assertThat(ended.path("status").asString()).isEqualTo("CANCELLED");
+            assertThat(ended.path("message").asString()).contains("not charged");
+            assertThat(next(driverInbox).path("type").asString()).isEqualTo("RIDE_CANCELLED");
+            assertThat(rideStatus(ride.id())).isEqualTo("CANCELLED");
+        }
+    }
+
+    @Test
     void noDriverFoundTellsTheRiderWhy() {
         TestRide ride = newRide();
         try (StompTestClient rider = connect(TestTokens.rider(ride.riderId()))) {

@@ -31,6 +31,15 @@ public final class RedisKeys {
         return "driver:lastseen";
     }
 
+    /**
+     * ZSET of when each driver was last heard from, score = epoch millis. Unlike
+     * {@link #driverLastSeen()} the reaper never clears it, so it can tell how long a driver has
+     * been silent (the abandoned-ride sweeper).
+     */
+    public static String driverHeard() {
+        return "driver:heard";
+    }
+
     public static String driverLocation(UUID driverId) {
         return "driver:" + driverId + ":loc";
     }

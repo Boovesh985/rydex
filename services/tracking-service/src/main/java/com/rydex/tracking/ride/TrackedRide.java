@@ -110,7 +110,8 @@ public class TrackedRide {
             case DRIVER_ARRIVED -> status == Status.DRIVER_ASSIGNED ? Status.DRIVER_ARRIVED : null;
             case RIDE_STARTED -> status == Status.DRIVER_ARRIVED ? Status.IN_PROGRESS : null;
             case RIDE_COMPLETED -> status == Status.IN_PROGRESS ? Status.COMPLETED : null;
-            case RIDE_CANCELLED -> status.isTerminal() || status == Status.IN_PROGRESS ? null : Status.CANCELLED;
+            // a trip under way is cancelled only by the system, when its driver stopped responding
+            case RIDE_CANCELLED -> status.isTerminal() ? null : Status.CANCELLED;
             default -> null;
         };
         if (next == null) {

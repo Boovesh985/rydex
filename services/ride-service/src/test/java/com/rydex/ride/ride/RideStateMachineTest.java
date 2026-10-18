@@ -24,7 +24,8 @@ class RideStateMachineTest {
                 .containsExactlyInAnyOrder(RideStatus.DRIVER_ARRIVED, RideStatus.CANCELLED);
         assertThat(RideStatus.DRIVER_ARRIVED.allowedNext())
                 .containsExactlyInAnyOrder(RideStatus.IN_PROGRESS, RideStatus.CANCELLED);
-        assertThat(RideStatus.IN_PROGRESS.allowedNext()).containsExactly(RideStatus.COMPLETED);
+        // CANCELLED from IN_PROGRESS: only the system, for a driver who vanished (RideService guards the API)
+        assertThat(RideStatus.IN_PROGRESS.allowedNext()).containsExactlyInAnyOrder(RideStatus.COMPLETED, RideStatus.CANCELLED);
     }
 
     @ParameterizedTest
@@ -65,13 +66,17 @@ class RideStateMachineTest {
     }
 
     @Test
-    void cannotCancelATripInProgress() {
+    void aTripInProgressCanOnlyBeEndedNotTakenBack() {
         Ride ride = newRide();
         ride.assignDriver(UUID.randomUUID(), T0);
         ride.markDriverArrived(T0);
         ride.start(T0);
 
-        assertThatThrownBy(() -> ride.cancel("RIDER", "late", T0)).isInstanceOf(IllegalRideTransitionException.class);
+        // the system ends a trip whose driver vanished (riders and drivers cannot: RideService refuses,
+        // see AbandonedRideTests); a trip never goes back to an earlier step
+        ride.cancel("SYSTEM", "driver silent", T0.plusSeconds(900));
+        assertThat(ride.getStatus()).isEqualTo(RideStatus.CANCELLED);
+        assertThatThrownBy(() -> ride.start(T0)).isInstanceOf(IllegalRideTransitionException.class);
     }
 
     @Test

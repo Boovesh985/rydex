@@ -59,7 +59,7 @@ export function useTimeOfDay(): { time: TimeOfDay; night: boolean } {
     return () => clearInterval(timer);
   }, []);
   const inForce = timeInForce(time, until, now);
-  return { time: inForce, night: inForce === 'auto' ? isNightNow(new Date(now)) : inForce === 'night' };
+  return { time: inForce, night: inForce === 'auto' ? isNightNow(now) : inForce === 'night' };
 }
 
 /** Whether the maps are in their night look now. */

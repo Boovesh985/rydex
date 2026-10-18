@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { timeInForce, useMapPrefs } from './mapPrefs';
-import { isNightNow, nextDayNightSwitch } from './theme';
+import { cityHour, isNightNow, nextDayNightSwitch } from './theme';
 
-const at = (h: number, m = 0) => new Date(2026, 9, 18, h, m);
+/** 18 October 2026, h:m in Chennai (UTC+5:30), whatever the clock of the machine running the tests */
+const at = (h: number, m = 0, day = 18) => new Date(Date.UTC(2026, 9, day, h, m) - 330 * 60_000);
 
 describe('day and night by the clock', () => {
   it('is day from 6 am to 6 pm and night from 6 pm to 6 am', () => {
@@ -10,11 +11,18 @@ describe('day and night by the clock', () => {
     expect([at(18), at(23, 30), at(0), at(3)].map((d) => isNightNow(d))).toEqual([true, true, true, true]);
   });
 
+  it("goes by Chennai's clock, not the viewer's", () => {
+    // 00:30 UTC is 6 am in Chennai (day there), whatever time it is where the viewer sits
+    expect(cityHour(Date.UTC(2026, 9, 18, 0, 30))).toBe(6);
+    expect(isNightNow(Date.UTC(2026, 9, 18, 0, 30))).toBe(false);
+    expect(isNightNow(Date.UTC(2026, 9, 18, 12, 30))).toBe(true); // 6 pm in Chennai
+  });
+
   it('switches next at 6 am or 6 pm', () => {
     expect(nextDayNightSwitch(at(3, 20))).toBe(at(6).getTime());
     expect(nextDayNightSwitch(at(6))).toBe(at(18).getTime());
     expect(nextDayNightSwitch(at(14, 45))).toBe(at(18).getTime());
-    expect(nextDayNightSwitch(at(21))).toBe(new Date(2026, 9, 19, 6).getTime());
+    expect(nextDayNightSwitch(at(21))).toBe(at(6, 0, 19).getTime());
   });
 
   it('keeps a hand-picked look only until it runs out', () => {

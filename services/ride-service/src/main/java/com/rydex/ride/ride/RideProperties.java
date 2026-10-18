@@ -10,7 +10,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * @param unmatchedTimeout a ride still REQUESTED this long after booking is cancelled by the system:
  *                         matching gives up after about 2 minutes, so no outcome by then means it was lost
- * @param sweepInterval    how often the unmatched-ride sweeper runs
+ * @param sweepInterval    how often the unmatched- and abandoned-ride sweepers run
+ * @param abandonedAfter   a ride under way (driver assigned, arrived or driving) whose driver has sent no
+ *                         heartbeat for this long, and that has not moved on for as long, is ended by the
+ *                         system, free of charge
  * @param cancellationFees INR a rider pays for cancelling after the driver arrived, per ride type
  *                         (a type without an entry cancels free)
  * @param arrivalRadiusM   how close to the pickup (metres) a driver's last position must be to mark arrival
@@ -19,6 +22,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record RideProperties(
         @DefaultValue("5m") Duration unmatchedTimeout,
         @DefaultValue("30s") Duration sweepInterval,
+        @DefaultValue("15m") Duration abandonedAfter,
         Map<RideType, BigDecimal> cancellationFees,
         @DefaultValue("250") int arrivalRadiusM) {
 

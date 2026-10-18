@@ -69,6 +69,15 @@ class Stats:
 PACE = {"BIKE": (1.0, 0.5), "AUTO": (0.8, 0.8)}
 
 
+def world_speed(step_m: float, speedup: float) -> float:
+    """
+    The speed to report (m/s) for a tick that covered `step_m`: the vehicle's speed in the simulated
+    city. With --speedup the city runs faster than real time, so it covers `speedup` times more road
+    per real second than it is driving at; a bike at 30 km/h must not show 150 km/h at 5x.
+    """
+    return step_m / (TICK_S * speedup)
+
+
 def pace(vehicle: str | None, jam: float) -> float:
     """Speed multiplier for a vehicle in traffic that slows a car to `jam` of its free-flow speed."""
     share, feel = PACE.get(vehicle or "", (1.0, 1.0))
@@ -447,7 +456,7 @@ class SimDriver:
             step = mps * pace(self.vehicle, jam) * self.s.speedup * TICK_S * self.rng.uniform(0.85, 1.12)
             travelled += step
             self.pos, self.heading, done = along(path, travelled)
-            self.speed = step / TICK_S
+            self.speed = world_speed(step, self.s.speedup)
             if done:
                 break
         self.speed = 0.0

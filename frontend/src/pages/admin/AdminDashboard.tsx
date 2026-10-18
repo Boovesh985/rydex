@@ -178,9 +178,9 @@ export function AdminDashboard() {
                 </section>
                 <section aria-label="Last 24 hours" className="grid grid-cols-2 gap-2">
                   <Kpi label="Requested" value={stats.data ? `${stats.data.requested}` : '–'} note={stats.data ? `${stats.data.completed} done · ${stats.data.cancelled} cancelled` : ''} />
-                  <Kpi label="Match rate" value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`} note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign`} />
+                  <Kpi label="Match rate" value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`} note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign (median)`} />
                   <Kpi label="Revenue" value={stats.data ? inr(stats.data.revenue) : '–'} note={stats.data?.avgFare == null ? '' : `${inr(stats.data.avgFare)} avg fare`} />
-                  <Kpi label="Pickup wait" value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)} note="assigned → arrived" />
+                  <Kpi label="Pickup wait" value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)} note="median, assigned → arrived" />
                 </section>
                 {grid.data && layers.grid && (
                   <p className="text-sm text-slate">

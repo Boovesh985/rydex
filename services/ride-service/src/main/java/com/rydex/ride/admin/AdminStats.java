@@ -33,8 +33,8 @@ public class AdminStats {
      * @param inFlight       rides not finished yet, by status (all time)
      * @param requested      rides requested in the window, and their outcome so far by status
      * @param matchRate      share of the window's finished searches that found a driver (null if none finished)
-     * @param avgAssignS     mean seconds from request to driver assigned
-     * @param avgPickupS     mean seconds from driver assigned to driver arrived
+     * @param avgAssignS     median seconds from request to driver assigned (the name predates the median)
+     * @param avgPickupS     median seconds from driver assigned to driver arrived
      * @param revenue        fares of rides completed in the window (INR)
      * @param avgFare        mean fare of those rides
      */
@@ -80,8 +80,10 @@ public class AdminStats {
         var outcome = jdbc.sql("""
                         SELECT count(*) FILTER (WHERE assigned_at IS NOT NULL) AS matched,
                                count(*) FILTER (WHERE assigned_at IS NOT NULL OR status = 'NO_DRIVER_FOUND') AS searched,
-                               avg(extract(epoch FROM assigned_at - requested_at))::float8 AS assign_s,
-                               avg(extract(epoch FROM arrived_at - assigned_at))::float8 AS pickup_s
+                               -- medians, not means: one ride left hanging for hours (a driver who vanished)
+                               -- would otherwise swamp a day of normal pickups
+                               percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM assigned_at - requested_at))::float8 AS assign_s,
+                               percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM arrived_at - assigned_at))::float8 AS pickup_s
                         FROM rides WHERE requested_at >= :from
                         """)
                 .param("from", from)

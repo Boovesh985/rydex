@@ -344,28 +344,37 @@ export function applyLook(map: MlMap, look: Look, previous?: Look) {
   map.getContainer().style.background = look.realistic ? 'transparent' : p.land;
 }
 
-/** When the maps' automatic look turns to day (6 am) and to night (6 pm), local time. */
+/** When the maps' automatic look turns to day (6 am) and to night (6 pm), in the city's time. */
 export const DAY_STARTS = 6;
 export const NIGHT_STARTS = 18;
 
-/** Night by the local clock: 6 pm to 6 am. */
-export function isNightNow(date = new Date()): boolean {
-  const h = date.getHours();
+/**
+ * The city's clock (Chennai: India Standard Time, UTC+5:30, no daylight saving), so the map shows
+ * Chennai's day or night to every viewer, wherever their own computer's clock is set.
+ */
+const CITY_UTC_OFFSET_MS = 330 * 60_000;
+
+/** The hour (0-23) in the city at this moment. */
+export function cityHour(at: Date | number = new Date()): number {
+  return new Date(+at + CITY_UTC_OFFSET_MS).getUTCHours();
+}
+
+/** Night by the city's clock: 6 pm to 6 am. */
+export function isNightNow(date: Date | number = new Date()): boolean {
+  const h = cityHour(date);
   return h >= NIGHT_STARTS || h < DAY_STARTS;
 }
 
-/** The next 6 am or 6 pm after `date`, when the automatic look changes (ms since the epoch). */
-export function nextDayNightSwitch(date = new Date()): number {
-  const next = new Date(date);
-  next.setMinutes(0, 0, 0);
-  const h = date.getHours();
-  if (h < DAY_STARTS) next.setHours(DAY_STARTS);
-  else if (h < NIGHT_STARTS) next.setHours(NIGHT_STARTS);
-  else {
-    next.setDate(next.getDate() + 1);
-    next.setHours(DAY_STARTS);
-  }
-  return next.getTime();
+/** The next 6 am or 6 pm in the city after `date`, when the automatic look changes (ms since the epoch). */
+export function nextDayNightSwitch(date: Date | number = new Date()): number {
+  // work on the city's wall clock as if it were UTC, then shift back
+  const city = new Date(+date + CITY_UTC_OFFSET_MS);
+  const h = city.getUTCHours();
+  city.setUTCMinutes(0, 0, 0);
+  if (h < DAY_STARTS) city.setUTCHours(DAY_STARTS);
+  else if (h < NIGHT_STARTS) city.setUTCHours(NIGHT_STARTS);
+  else city.setUTCHours(24 + DAY_STARTS);
+  return city.getTime() - CITY_UTC_OFFSET_MS;
 }
 
 export const ROUTE_COLORS = {

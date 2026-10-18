@@ -24,6 +24,11 @@
             <groupId>com.rydex</groupId>
             <artifactId>messaging</artifactId>
         </dependency>
+        <!-- read-only: when each driver last sent a heartbeat (the abandoned-ride sweeper) -->
+        <dependency>
+            <groupId>com.rydex</groupId>
+            <artifactId>presence</artifactId>
+        </dependency>
 
         <!-- Argon2id password hashing (Spring Security's Argon2PasswordEncoder needs Bouncy Castle) -->
         <dependency>

@@ -62,7 +62,8 @@ public class PresenceStore {
     public HeartbeatResult heartbeat(UUID driverId, double lat, double lng, Double heading, Double speed, Instant at) {
         // location TTL = staleness window: a silent driver's position disappears with them
         Long result = redis.execute(locationScript,
-                List.of(RedisKeys.driverState(driverId), RedisKeys.driverLocation(driverId), RedisKeys.driverLastSeen()),
+                List.of(RedisKeys.driverState(driverId), RedisKeys.driverLocation(driverId), RedisKeys.driverLastSeen(),
+                        RedisKeys.driverHeard()),
                 driverId.toString(), Double.toString(lat), Double.toString(lng),
                 heading == null ? "" : heading.toString(), speed == null ? "" : speed.toString(),
                 Geohash.encode(lat, lng, Geohash.MATCHING_PRECISION), Long.toString(at.toEpochMilli()),
@@ -115,6 +116,19 @@ public class PresenceStore {
         Set<String> ids = redis.opsForZSet().rangeByScore(RedisKeys.driverLastSeen(),
                 since.toEpochMilli(), Double.POSITIVE_INFINITY, 0, limit);
         return ids == null ? List.of() : ids.stream().map(UUID::fromString).toList();
+    }
+
+    /**
+     * When the driver last sent a heartbeat, however long ago (the reaper does not clear this, unlike
+     * the search indexes); empty when never heard from.
+     */
+    public Optional<Instant> lastHeard(UUID driverId) {
+        Double millis = redis.opsForZSet().score(RedisKeys.driverHeard(), driverId.toString());
+        if (millis == null) {
+            // written before driver:heard existed (a service not yet updated): the search index still knows
+            millis = redis.opsForZSet().score(RedisKeys.driverLastSeen(), driverId.toString());
+        }
+        return millis == null ? Optional.empty() : Optional.of(Instant.ofEpochMilli(millis.longValue()));
     }
 
     /** Drivers whose last heartbeat is older than {@code cutoff}. */

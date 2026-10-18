@@ -155,3 +155,12 @@ def test_an_npc_driver_left_on_an_old_vehicle_takes_its_seeded_one():
         ("PUT", "/api/drivers/me", {"vehicleType": "PREMIUM", "vehicleNumber": "TN 03 YM 1888", "vehicleModel": "Toyota Camry"}),
     ]
     assert after["vehicleType"] == "PREMIUM"
+
+
+def test_reported_speed_is_the_city_speed_not_the_fast_forward():
+    from rydex_sim.driver import TICK_S, world_speed
+
+    # 30 km/h in the city: one tick covers 30/3.6 * TICK_S metres at 1x, five times that at 5x
+    city = 30 / 3.6
+    assert world_speed(city * TICK_S, 1.0) == pytest.approx(city)
+    assert world_speed(city * TICK_S * 5, 5.0) == pytest.approx(city)

@@ -3,7 +3,7 @@ import type { IControl, Map as MlMap } from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMapPrefs, useTimeOfDay } from './mapPrefs';
-import { DAY_STARTS, NIGHT_STARTS } from './theme';
+import { cityHour, DAY_STARTS, NIGHT_STARTS } from './theme';
 import { TRAFFIC_COLORS } from './traffic';
 
 const hour = (h: number) => `${h % 12 || 12} ${h < 12 ? 'am' : 'pm'}`;
@@ -35,7 +35,7 @@ export function MapPrefsControl({ map }: { map: MlMap }) {
   // the icon shows the look now (sun and moon together while the clock decides)
   const TimeIcon = time === 'auto' ? SunMoon : night ? Moon : Sun;
   const now = night ? 'Night' : 'Day';
-  const label = `${time === 'auto' ? `${now} by the clock (day ${hour(DAY_STARTS)} to ${hour(NIGHT_STARTS)})` : `${now} until ${hour(new Date(until ?? 0).getHours())}`}. Switch to ${night ? 'day' : 'night'}`;
+  const label = `${time === 'auto' ? `${now} by the clock (day ${hour(DAY_STARTS)} to ${hour(NIGHT_STARTS)})` : `${now} until ${hour(cityHour(until ?? 0))}`}. Switch to ${night ? 'day' : 'night'}`;
   return createPortal(
     <>
       <button type="button" aria-pressed={traffic} title="Traffic" aria-label="Traffic" onClick={toggleTraffic} className={traffic ? 'rx-on' : ''}>

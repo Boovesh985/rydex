@@ -44,6 +44,9 @@ public class RideService {
     static final int MAX_OTP_ATTEMPTS = 5;
     static final String SYSTEM_ACTOR = "SYSTEM:ride-service";
     static final String UNMATCHED_REASON = "No driver found in time";
+    static final String ABANDONED_REASON = "The driver stopped responding, so the ride was ended. You were not charged.";
+    /** under way: a ride the system may end when its driver goes silent */
+    static final Set<RideStatus> UNDER_WAY = EnumSet.of(RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS);
     private static final Set<RideStatus> OTP_VISIBLE =
             EnumSet.of(RideStatus.REQUESTED, RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_ARRIVED);
     private static final Set<RideStatus> IN_FLIGHT = EnumSet.of(RideStatus.REQUESTED, RideStatus.DRIVER_ASSIGNED,
@@ -136,6 +139,10 @@ public class RideService {
         Ride ride = load(rideId);
         requireAccess(caller, ride);
         RideStatus from = ride.getStatus();
+        if (from == RideStatus.IN_PROGRESS) {
+            // only the system ends a trip under way (its driver went silent); riders and drivers finish it
+            throw new IllegalRideTransitionException(from, RideStatus.CANCELLED);
+        }
         Instant now = clock.instant();
         ride.cancel(caller.role().name(), reason == null || reason.isBlank() ? null : reason.trim(),
                 cancellationFee(caller, ride), now);
@@ -230,6 +237,25 @@ public class RideService {
         Instant now = clock.instant();
         ride.cancel("SYSTEM", UNMATCHED_REASON, now);
         record(ride, RideStatus.REQUESTED, SYSTEM_ACTOR, now);
+        publish(EventType.RIDE_CANCELLED, ride, ride.getCancelReason());
+        return true;
+    }
+
+    /**
+     * Abandoned-ride safety net: ends a ride under way, as the system and free of charge, while it is
+     * still in the status the sweeper saw ({@code expected}) when it found the driver silent. The
+     * RIDE_CANCELLED event frees the driver in driver-service and tells the rider and the driver.
+     * Returns false when the ride has moved on.
+     */
+    @Transactional
+    public boolean endAbandoned(UUID rideId, RideStatus expected) {
+        Ride ride = load(rideId);
+        if (ride.getStatus() != expected || !UNDER_WAY.contains(expected)) {
+            return false;
+        }
+        Instant now = clock.instant();
+        ride.cancel("SYSTEM", ABANDONED_REASON, now);
+        record(ride, expected, SYSTEM_ACTOR, now);
         publish(EventType.RIDE_CANCELLED, ride, ride.getCancelReason());
         return true;
     }
