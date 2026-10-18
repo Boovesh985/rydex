@@ -14,6 +14,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param abandonedAfter   a ride under way (driver assigned, arrived or driving) whose driver has sent no
  *                         heartbeat for this long, and that has not moved on for as long, is ended by the
  *                         system, free of charge
+ * @param unheardAfter     the same for a driver with no heartbeat on record at all (from before driver:heard
+ *                         existed, or a record lost with Redis): judged by the ride's own last step, later
  * @param cancellationFees INR a rider pays for cancelling after the driver arrived, per ride type
  *                         (a type without an entry cancels free)
  * @param arrivalRadiusM   how close to the pickup (metres) a driver's last position must be to mark arrival
@@ -23,6 +25,7 @@ public record RideProperties(
         @DefaultValue("5m") Duration unmatchedTimeout,
         @DefaultValue("30s") Duration sweepInterval,
         @DefaultValue("15m") Duration abandonedAfter,
+        @DefaultValue("2h") Duration unheardAfter,
         Map<RideType, BigDecimal> cancellationFees,
         @DefaultValue("250") int arrivalRadiusM) {
 

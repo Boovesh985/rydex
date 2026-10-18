@@ -100,6 +100,18 @@ class AbandonedRideTests extends IntegrationTest {
     }
 
     @Test
+    void aDriverWithNoHeartbeatOnRecordIsJudgedByHowLongTheRideStoodStill() {
+        // no driver:heard entry (a record from before it existed): 40 min proves nothing, 3 h does
+        Booked recent = underWay(Duration.ofMinutes(40));
+        Booked forgotten = underWay(Duration.ofHours(3));
+
+        sweeper.sweep();
+
+        assertThat(ride(recent).path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(ride(forgotten).path("status").asString()).isEqualTo("CANCELLED");
+    }
+
+    @Test
     void ridersStillCannotCancelATripUnderWay() {
         Booked trip = underWay(Duration.ofMinutes(1));
 

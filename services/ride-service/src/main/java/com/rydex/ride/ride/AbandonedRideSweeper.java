@@ -50,11 +50,15 @@ class AbandonedRideSweeper {
 
     /** Ends rides under way whose driver went silent; returns how many. */
     int sweep() {
-        Instant cutoff = clock.instant().minus(props.abandonedAfter());
+        Instant now = clock.instant();
+        Instant cutoff = now.minus(props.abandonedAfter());
+        Instant unheardCutoff = now.minus(props.unheardAfter());
         int ended = 0;
         for (Ride ride : rides.findUnderWaySince(RideService.UNDER_WAY, cutoff, PageRequest.of(0, BATCH))) {
-            boolean silent = ride.getDriverId() == null
-                    || presence.lastHeard(ride.getDriverId()).map(seen -> seen.isBefore(cutoff)).orElse(true);
+            Instant heard = ride.getDriverId() == null ? null : presence.lastHeard(ride.getDriverId()).orElse(null);
+            // no heartbeat on record says nothing about how long the driver has been gone (the record
+            // may predate driver:heard): then only a ride that has stood still for much longer is ended
+            boolean silent = heard != null ? heard.isBefore(cutoff) : lastStep(ride).isBefore(unheardCutoff);
             if (!silent) {
                 continue; // a long trip, a long wait at the pickup: the driver is still there
             }
@@ -69,6 +73,11 @@ class AbandonedRideSweeper {
             }
         }
         return ended;
+    }
+
+    private static Instant lastStep(Ride ride) {
+        Instant at = ride.getStartedAt() != null ? ride.getStartedAt() : ride.getArrivedAt();
+        return at != null ? at : ride.getAssignedAt();
     }
 
     private void sweepSafely() {
