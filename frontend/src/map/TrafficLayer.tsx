@@ -41,7 +41,16 @@ export function TrafficLayer({ map, night }: { map: MlMap; night: boolean }) {
           paint: {
             'line-color': ['match', ['get', 'b'], 'free', TRAFFIC_COLORS.free, 'slow', TRAFFIC_COLORS.slow, 'heavy', TRAFFIC_COLORS.heavy, TRAFFIC_COLORS.jam],
             // a band down the middle of the road at street level, quieter so the lanes still read
-            'line-width': worldWidth([[10, 1.1], [13, 2.2], [15, 3.6], [17, 6.5], [19, 11]], 1.6),
+            'line-width': worldWidth(
+              [
+                [10, 1.1],
+                [13, 2.2],
+                [15, 3.6],
+                [17, 6.5],
+                [19, 11],
+              ],
+              1.6,
+            ),
             'line-opacity': ['interpolate', ['linear'], ['zoom'], 18, 0.88, 20, 0.6],
           },
         },

@@ -154,7 +154,13 @@ function RideScreen({ rideId }: { rideId: string }) {
           onExit={rx.exit}
         >
           <div className="space-y-3">
-            {driver.data && tracked ? <DriverPanel driver={driver.data} booked={r.rideType} /> : <p className="text-sm font-bold">{rideTypeLabel[r.rideType]} · {inr(r.estFare)}</p>}
+            {driver.data && tracked ? (
+              <DriverPanel driver={driver.data} booked={r.rideType} />
+            ) : (
+              <p className="text-sm font-bold">
+                {rideTypeLabel[r.rideType]} · {inr(r.estFare)}
+              </p>
+            )}
             {r.status === 'IN_PROGRESS' && progress != null && (
               <TripProgress progress={progress} from={shortAddress(r.pickup.address)} to={shortAddress(r.drop.address)} />
             )}
@@ -191,7 +197,12 @@ function rideStatus(ride: Ride, location: LiveLocation | null): StatusView {
       return { label: 'Your driver is here', value: 'NOW', tone: 'go', sub: `At ${shortAddress(ride.pickup.address)}` };
     case 'IN_PROGRESS':
       return location && location.phase === 'TO_DROP'
-        ? { label: 'On the way', value: minutes(location.etaS).replace(' min', ''), unit: 'min', sub: `${distance(location.distanceM)} to ${shortAddress(ride.drop.address)}` }
+        ? {
+            label: 'On the way',
+            value: minutes(location.etaS).replace(' min', ''),
+            unit: 'min',
+            sub: `${distance(location.distanceM)} to ${shortAddress(ride.drop.address)}`,
+          }
         : { label: 'On the way', value: '···', sub: `To ${shortAddress(ride.drop.address)}` };
     case 'COMPLETED':
       return { label: 'You have arrived', value: inr(ride.finalFare ?? ride.estFare), tone: 'go', sub: 'Trip fare' };
@@ -227,7 +238,11 @@ function RideSheet({ ride, location, driver, progress }: { ride: Ride; location:
 
       {/* trying again starts from the same trip: pickup, drop and ride type filled in */}
       {(s === 'COMPLETED' || s === 'CANCELLED' || s === 'NO_DRIVER_FOUND') && (
-        <Button block variant={s === 'NO_DRIVER_FOUND' ? 'primary' : 'dark'} onClick={() => navigate('/ride', s === 'NO_DRIVER_FOUND' ? { state: retryState(ride) } : undefined)}>
+        <Button
+          block
+          variant={s === 'NO_DRIVER_FOUND' ? 'primary' : 'dark'}
+          onClick={() => navigate('/ride', s === 'NO_DRIVER_FOUND' ? { state: retryState(ride) } : undefined)}
+        >
           {s === 'NO_DRIVER_FOUND' ? 'Try again' : 'Book another ride'}
         </Button>
       )}
@@ -274,7 +289,11 @@ function StatusMeter({ ride, location }: { ride: Ride; location: LiveLocation | 
 /** The PIN the driver must type to start the trip: the rider reads it out when they get in. */
 function RidePin({ pin, here }: { pin: string; here: boolean }) {
   return (
-    <div className={`flex items-center justify-between gap-3 rounded-xl p-3 ${here ? 'bg-auto text-ink ring-2 ring-ink' : 'bg-chalk'}`} role="group" aria-label="Your ride PIN">
+    <div
+      className={`flex items-center justify-between gap-3 rounded-xl p-3 ${here ? 'bg-auto text-ink ring-2 ring-ink' : 'bg-chalk'}`}
+      role="group"
+      aria-label="Your ride PIN"
+    >
       <div>
         <p className="font-bold">{here ? 'Tell your driver this PIN' : 'Your ride PIN'}</p>
         <p className={`text-sm ${here ? '' : 'text-slate'}`}>
@@ -360,9 +379,7 @@ function CancelRide({ ride }: { ride: Ride }) {
   }
   return (
     <div className="space-y-2 rounded-xl bg-signal-soft p-3">
-      <p className="text-sm font-bold">
-        {costs ? 'Your driver is already here, so a cancellation fee applies.' : 'Cancelling now is free.'}
-      </p>
+      <p className="text-sm font-bold">{costs ? 'Your driver is already here, so a cancellation fee applies.' : 'Cancelling now is free.'}</p>
       <ErrorNote>{cancel.error && errorMessage(cancel.error)}</ErrorNote>
       <div className="grid grid-cols-2 gap-2">
         <Button variant="quiet" onClick={() => setConfirming(false)}>

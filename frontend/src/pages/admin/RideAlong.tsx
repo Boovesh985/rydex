@@ -82,7 +82,11 @@ export function RideAlong({ driverId, duty, speedKmh, ride, onClose }: Props) {
         <Spinner label="Loading the driver…" />
       )}
 
-      {ride ? <Trip key={ride.id} ride={ride} /> : <p className="rounded-xl bg-chalk p-3 text-sm">No rider yet. Ride requests within reach go to this driver through matching.</p>}
+      {ride ? (
+        <Trip key={ride.id} ride={ride} />
+      ) : (
+        <p className="rounded-xl bg-chalk p-3 text-sm">No rider yet. Ride requests within reach go to this driver through matching.</p>
+      )}
     </section>
   );
 }
@@ -96,7 +100,8 @@ function Trip({ ride: r }: { ride: Ride }) {
   const location = newest(live, polled.data);
   const meter = tripMeter(r, location);
   // remaining road distance against the planned trip: good enough for a glance
-  const progress = r.status === 'IN_PROGRESS' && location?.phase === 'TO_DROP' ? 1 - location.distanceM / Math.max(location.distanceM, r.estDistanceM, 1) : null;
+  const progress =
+    r.status === 'IN_PROGRESS' && location?.phase === 'TO_DROP' ? 1 - location.distanceM / Math.max(location.distanceM, r.estDistanceM, 1) : null;
 
   return (
     <div className="space-y-4">

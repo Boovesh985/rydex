@@ -30,16 +30,11 @@ function AuthFrame({ title, children }: { title: string; children: ReactNode }) 
             <br />
             <span className="text-auto">metered live.</span>
           </p>
-          <p className="mt-5 max-w-sm text-chalk/70">
-            Book a car, see the fare before you go, and watch your driver come to you on the map.
-          </p>
+          <p className="mt-5 max-w-sm text-chalk/70">Book a car, see the fare before you go, and watch your driver come to you on the map.</p>
         </div>
         <p className="font-mono text-xs text-chalk/50">13.0827° N · 80.2707° E</p>
         {/* the meter's tick marks, as a quiet texture */}
-        <div
-          className="pointer-events-none absolute -right-24 -bottom-24 size-96 rounded-full border-[22px] border-dashed border-auto/15"
-          aria-hidden
-        />
+        <div className="pointer-events-none absolute -right-24 -bottom-24 size-96 rounded-full border-[22px] border-dashed border-auto/15" aria-hidden />
       </aside>
       <section className="flex flex-col justify-center px-5 py-10 sm:px-12">
         <div className="mx-auto w-full max-w-sm">
@@ -100,7 +95,14 @@ export function LoginPage() {
     <AuthFrame title="Sign in">
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        <PasswordField label="Password" autoComplete="current-password" required maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <PasswordField
+          label="Password"
+          autoComplete="current-password"
+          required
+          maxLength={128}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         <ErrorNote>{error}</ErrorNote>
         <Button type="submit" block busy={busy}>
           Sign in

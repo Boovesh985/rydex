@@ -131,7 +131,11 @@ export class FollowCamera {
     const c = map.getCenter();
     this.intro = this.reduced
       ? null
-      : { from: { lng: c.lng, lat: c.lat, zoom: this.zoom, pitch: this.pitch, bearing: map.getBearing(), padTop: this.padTop }, start: performance.now(), ms: 1700 };
+      : {
+          from: { lng: c.lng, lat: c.lat, zoom: this.zoom, pitch: this.pitch, bearing: map.getBearing(), padTop: this.padTop },
+          start: performance.now(),
+          ms: 1700,
+        };
     this.takeOverInput();
     this.off.push(
       useMapPrefs.subscribe((s, prev) => {

@@ -44,7 +44,11 @@ export function AppShell() {
     queryClient.clear();
     seen.current.clear();
     if (user) {
-      toast(`Signed in as ${user.name}`, 'Another tab signed in to a different account, so this one switched too. Use a private window to be two people at once.', 'info');
+      toast(
+        `Signed in as ${user.name}`,
+        'Another tab signed in to a different account, so this one switched too. Use a private window to be two people at once.',
+        'info',
+      );
       navigate(homeFor(user.role), { replace: true });
     }
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps

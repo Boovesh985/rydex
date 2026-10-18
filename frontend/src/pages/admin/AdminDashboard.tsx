@@ -12,7 +12,18 @@ import { Button, ErrorNote, Eyebrow } from '../../components/ui';
 import { clock, inr, minutes, rideTypeLabel, shortAddress, when } from '../../lib/format';
 import type { LatLng } from '../../lib/geo';
 import { VEHICLE_PAINT } from '../../lib/vehicles';
-import { AnimatedCar, BaseMap, DemandHeat, DispatchLines, Fleet, GridOverlay, MapMoves, RememberView, RiderMarkers, type GridCellShape } from '../../map/MapView';
+import {
+  AnimatedCar,
+  BaseMap,
+  DemandHeat,
+  DispatchLines,
+  Fleet,
+  GridOverlay,
+  MapMoves,
+  RememberView,
+  RiderMarkers,
+  type GridCellShape,
+} from '../../map/MapView';
 import { TRAFFIC_COLORS } from '../../map/traffic';
 import { useRealistic } from '../../map/useRealistic';
 import { cityView } from './city';
@@ -43,7 +54,12 @@ export function AdminDashboard() {
 
   const drivers = useQuery({ queryKey: ['admin', 'drivers'], queryFn: adminApi.liveDrivers, refetchInterval: 3000 });
   const inFlight = useQuery({ queryKey: ['admin', 'rides', 'active'], queryFn: () => ridesApi.all(0, 100, true), refetchInterval: 4000 });
-  const grid = useQuery({ queryKey: ['admin', 'grid', center[0].toFixed(3), center[1].toFixed(3)], queryFn: () => adminApi.grid(center[0], center[1]), refetchInterval: 10_000, enabled: layers.grid });
+  const grid = useQuery({
+    queryKey: ['admin', 'grid', center[0].toFixed(3), center[1].toFixed(3)],
+    queryFn: () => adminApi.grid(center[0], center[1]),
+    refetchInterval: 10_000,
+    enabled: layers.grid,
+  });
   const demand = useQuery({ queryKey: ['admin', 'demand'], queryFn: () => adminApi.demand(24), refetchInterval: 30_000, enabled: layers.demand });
   const stats = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => adminApi.stats(24), refetchInterval: 10_000 });
 
@@ -181,24 +197,42 @@ export function AdminDashboard() {
                   <Kpi label="Riders waiting" value={`${city.counts.searching + city.counts.waiting}`} note={`${city.counts.searching} still searching`} />
                 </section>
                 <section aria-label="Last 24 hours" className="grid grid-cols-2 gap-2">
-                  <Kpi label="Requested" value={stats.data ? `${stats.data.requested}` : '–'} note={stats.data ? `${stats.data.completed} done · ${stats.data.cancelled} cancelled` : ''} />
-                  <Kpi label="Match rate" value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`} note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign (median)`} />
-                  <Kpi label="Revenue" value={stats.data ? inr(stats.data.revenue) : '–'} note={stats.data?.avgFare == null ? '' : `${inr(stats.data.avgFare)} avg fare`} />
-                  <Kpi label="Pickup wait" value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)} note="median, assigned → arrived" />
+                  <Kpi
+                    label="Requested"
+                    value={stats.data ? `${stats.data.requested}` : '–'}
+                    note={stats.data ? `${stats.data.completed} done · ${stats.data.cancelled} cancelled` : ''}
+                  />
+                  <Kpi
+                    label="Match rate"
+                    value={stats.data?.matchRate == null ? '–' : `${Math.round(stats.data.matchRate * 100)}%`}
+                    note={stats.data?.avgAssignS == null ? 'no searches yet' : `${stats.data.avgAssignS} s to assign (median)`}
+                  />
+                  <Kpi
+                    label="Revenue"
+                    value={stats.data ? inr(stats.data.revenue) : '–'}
+                    note={stats.data?.avgFare == null ? '' : `${inr(stats.data.avgFare)} avg fare`}
+                  />
+                  <Kpi
+                    label="Pickup wait"
+                    value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)}
+                    note="median, assigned → arrived"
+                  />
                 </section>
                 {grid.data && layers.grid && (
                   <p className="text-sm text-slate">
-                    Map centre cell <span className="font-mono font-bold text-ink">{grid.data.center}</span>: {grid.data.availableDrivers} drivers available and {grid.data.recentRequests} requests in the 3×3 search area.
+                    Map centre cell <span className="font-mono font-bold text-ink">{grid.data.center}</span>: {grid.data.availableDrivers} drivers available and{' '}
+                    {grid.data.recentRequests} requests in the 3×3 search area.
                   </p>
                 )}
                 <Legend />
                 <p className="text-xs text-slate">
-                  Start the city with <code className="rounded bg-chalk px-1 font-mono">python simulate.py --city</code>: automated drivers and riders (NPCs) book, drive and pay on their own. rider1 and driver01 are yours to test with.
+                  Start the city with <code className="rounded bg-chalk px-1 font-mono">python simulate.py --city</code>: automated drivers and riders (NPCs)
+                  book, drive and pay on their own. rider1 and driver01 are yours to test with.
                 </p>
-          </>
-        )}
-        {tab === 'rides' && <LiveRides active={inFlight} onRideAlong={setRiding} />}
-        {tab === 'payments' && <Payments />}
+              </>
+            )}
+            {tab === 'rides' && <LiveRides active={inFlight} onRideAlong={setRiding} />}
+            {tab === 'payments' && <Payments />}
           </>
         )}
       </aside>

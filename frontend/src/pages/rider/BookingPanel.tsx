@@ -118,13 +118,7 @@ export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusFi
             ))}
           </div>
 
-          {chosen && (
-            <Meter
-              label="Fare, fixed upfront"
-              value={inr(chosen.fare)}
-              sub={`${rideTypeLabel[chosen.rideType]} · pay after the trip`}
-            />
-          )}
+          {chosen && <Meter label="Fare, fixed upfront" value={inr(chosen.fare)} sub={`${rideTypeLabel[chosen.rideType]} · pay after the trip`} />}
           <ErrorNote>{book.error && errorMessage(book.error)}</ErrorNote>
           <Button block busy={book.isPending} onClick={() => book.mutate()} disabled={!chosen}>
             Book {chosen ? rideTypeLabel[chosen.rideType] : 'ride'}

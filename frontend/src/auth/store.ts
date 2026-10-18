@@ -43,5 +43,4 @@ if (typeof window !== 'undefined') {
   });
 }
 
-export const homeFor = (role: User['role']) =>
-  role === 'DRIVER' ? '/drive' : role === 'ADMIN' ? '/admin' : '/ride';
+export const homeFor = (role: User['role']) => (role === 'DRIVER' ? '/drive' : role === 'ADMIN' ? '/admin' : '/ride');

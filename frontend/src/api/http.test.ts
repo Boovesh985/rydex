@@ -53,17 +53,20 @@ describe('api client', () => {
   });
 
   it('signs out when the refresh token is refused', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(401, {})).mockResolvedValueOnce(json(401, { title: 'Unauthorized' })));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json(401, {}))
+        .mockResolvedValueOnce(json(401, { title: 'Unauthorized' })),
+    );
 
     await expect(api('/api/me')).rejects.toBeInstanceOf(ApiError);
     expect(useAuth.getState().session).toBeNull();
   });
 
   it('turns Problem Details into readable errors', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(json(429, { title: 'Too Many Requests', detail: 'slow down' }, { 'Retry-After': '42' })),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(429, { title: 'Too Many Requests', detail: 'slow down' }, { 'Retry-After': '42' })));
 
     const e = await api('/api/rides/estimate').catch((x: unknown) => x);
     expect(e).toBeInstanceOf(ApiError);

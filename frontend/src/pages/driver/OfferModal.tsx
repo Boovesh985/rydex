@@ -32,7 +32,12 @@ export function OfferModal({ offer, vehicle, busy, error, onAccept, onReject }: 
   const urgent = left <= 5;
 
   return (
-    <div className="fixed inset-0 z-[1800] flex items-end justify-center bg-ink/40 p-3 backdrop-blur-[2px] sm:items-center" role="dialog" aria-modal="true" aria-labelledby="offer-title">
+    <div
+      className="fixed inset-0 z-[1800] flex items-end justify-center bg-ink/40 p-3 backdrop-blur-[2px] sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="offer-title"
+    >
       <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-sheet)] bg-paper shadow-[var(--shadow-float)]">
         <div className="flex items-center gap-4 bg-ink p-4 text-chalk">
           <div className="relative grid size-16 shrink-0 place-items-center">

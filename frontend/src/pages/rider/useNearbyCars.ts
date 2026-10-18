@@ -21,7 +21,16 @@ export function useNearbyCars(at: Pick<GeoPoint, 'lat' | 'lng'> | null) {
   });
   const data = nearby.data;
   const cars = useMemo<FleetCar[]>(
-    () => (data ?? []).map((c) => ({ id: c.id, lat: c.lat, lng: c.lng, heading: c.heading, type: c.rideType, duty: 'free', label: `${rideTypeLabel[c.rideType]} nearby` })),
+    () =>
+      (data ?? []).map((c) => ({
+        id: c.id,
+        lat: c.lat,
+        lng: c.lng,
+        heading: c.heading,
+        type: c.rideType,
+        duty: 'free',
+        label: `${rideTypeLabel[c.rideType]} nearby`,
+      })),
     [data],
   );
   const closest = data?.[0];

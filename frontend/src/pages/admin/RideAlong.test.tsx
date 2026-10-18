@@ -52,7 +52,19 @@ describe('RideAlong', () => {
     expect(screen.getByRole('link', { name: /Open the trip page/ })).toHaveAttribute('href', '/trips/ride-1');
 
     // a live fix 2 km from the drop on a 5 km trip: 60% there
-    const fix: LiveLocation = { rideId: 'ride-1', driverId: 'driver-27', lat: 13.07, lng: 80.27, heading: 90, speed: 9, phase: 'TO_DROP', etaS: 300, distanceM: 2000, etaEstimated: false, at: '2026-10-17T10:00:05Z' };
+    const fix: LiveLocation = {
+      rideId: 'ride-1',
+      driverId: 'driver-27',
+      lat: 13.07,
+      lng: 80.27,
+      heading: 90,
+      speed: 9,
+      phase: 'TO_DROP',
+      etaS: 300,
+      distanceM: 2000,
+      etaEstimated: false,
+      at: '2026-10-17T10:00:05Z',
+    };
     act(() => pushes.get('/topic/rides/ride-1/location')!(fix));
     expect(screen.getByRole('status', { name: 'On trip: 5 min' })).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: 'Trip progress' })).toHaveAttribute('aria-valuenow', '60');

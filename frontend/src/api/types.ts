@@ -5,14 +5,7 @@ export type Role = 'RIDER' | 'DRIVER' | 'ADMIN';
 export type RideType = 'BIKE' | 'AUTO' | 'ECONOMY' | 'COMFORT' | 'XL' | 'PREMIUM';
 export const RIDE_TYPES: RideType[] = ['BIKE', 'AUTO', 'ECONOMY', 'COMFORT', 'XL', 'PREMIUM'];
 
-export type RideStatus =
-  | 'REQUESTED'
-  | 'DRIVER_ASSIGNED'
-  | 'DRIVER_ARRIVED'
-  | 'IN_PROGRESS'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'NO_DRIVER_FOUND';
+export type RideStatus = 'REQUESTED' | 'DRIVER_ASSIGNED' | 'DRIVER_ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_DRIVER_FOUND';
 
 export const ACTIVE_STATUSES: RideStatus[] = ['REQUESTED', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
 

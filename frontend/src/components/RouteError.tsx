@@ -67,7 +67,11 @@ export function RouteError() {
           <Button onClick={reload} className="flex-1">
             <RotateCw className="size-4" aria-hidden /> Reload
           </Button>
-          <Link to="/" reloadDocument className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-paper px-5 font-display-wide text-[0.95rem] font-bold text-ink ring-1 ring-mist hover:ring-ink/40">
+          <Link
+            to="/"
+            reloadDocument
+            className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-paper px-5 font-display-wide text-[0.95rem] font-bold text-ink ring-1 ring-mist hover:ring-ink/40"
+          >
             Home
           </Link>
         </div>

@@ -41,13 +41,23 @@ export function HistoryPage() {
         </div>
         {pages > 1 && (
           <nav className="mt-4 flex items-center justify-center gap-3" aria-label="Pages">
-            <button className="grid size-10 place-items-center rounded-lg bg-paper disabled:opacity-40" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Newer rides">
+            <button
+              className="grid size-10 place-items-center rounded-lg bg-paper disabled:opacity-40"
+              disabled={page === 0}
+              onClick={() => setPage(page - 1)}
+              aria-label="Newer rides"
+            >
               <ChevronLeft className="size-5" />
             </button>
             <span className="font-mono text-sm tabular">
               {page + 1} / {pages}
             </span>
-            <button className="grid size-10 place-items-center rounded-lg bg-paper disabled:opacity-40" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)} aria-label="Older rides">
+            <button
+              className="grid size-10 place-items-center rounded-lg bg-paper disabled:opacity-40"
+              disabled={page + 1 >= pages}
+              onClick={() => setPage(page + 1)}
+              aria-label="Older rides"
+            >
               <ChevronRight className="size-5" />
             </button>
           </nav>

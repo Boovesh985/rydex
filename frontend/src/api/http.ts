@@ -119,7 +119,8 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 429) return `Too many requests. Try again in ${e.retryAfter ?? 60} s.`;
     // 502/504: a gateway (the dev proxy, Caddy) could not reach the service; its detail says which
-    if (e.status === 502 || e.status === 504) return e.message.startsWith('Request failed') ? 'Rydex is not reachable right now. Try again in a moment.' : e.message;
+    if (e.status === 502 || e.status === 504)
+      return e.message.startsWith('Request failed') ? 'Rydex is not reachable right now. Try again in a moment.' : e.message;
     if (e.status >= 500 && e.status !== 503) return 'Something went wrong on our side. Try again.';
     return e.message;
   }

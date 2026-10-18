@@ -34,7 +34,11 @@ export function Alerts({ rides, onRideAlong }: { rides: Ride[]; onRideAlong: (dr
             <span className="block truncate text-xs text-slate">{a.detail}</span>
           </Link>
           {a.driverId && (
-            <button type="button" onClick={() => onRideAlong(a.driverId!)} className="shrink-0 rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-chalk hover:bg-ink-2">
+            <button
+              type="button"
+              onClick={() => onRideAlong(a.driverId!)}
+              className="shrink-0 rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-chalk hover:bg-ink-2"
+            >
               Ride along
             </button>
           )}
@@ -91,7 +95,11 @@ export function FindVehicle({ live, onRideAlong }: { live: Set<string>; onRideAl
                 </span>
               </span>
               {online ? (
-                <button type="button" onClick={() => onRideAlong(d.id)} className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-chalk hover:bg-ink-2">
+                <button
+                  type="button"
+                  onClick={() => onRideAlong(d.id)}
+                  className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-chalk hover:bg-ink-2"
+                >
                   Ride along <ChevronRight className="size-3.5" aria-hidden />
                 </button>
               ) : (

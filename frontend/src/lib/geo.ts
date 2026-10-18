@@ -14,8 +14,7 @@ export function haversine(a: LatLng, b: LatLng): number {
 /** Compass bearing from a to b, 0-360 degrees (0 = north). */
 export function bearing(a: LatLng, b: LatLng): number {
   const y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0]));
-  const x =
-    Math.cos(rad(a[0])) * Math.sin(rad(b[0])) - Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1]));
+  const x = Math.cos(rad(a[0])) * Math.sin(rad(b[0])) - Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1]));
   return (deg(Math.atan2(y, x)) + 360) % 360;
 }
 

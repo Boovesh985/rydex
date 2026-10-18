@@ -24,13 +24,55 @@ export const routes: RouteObject[] = [
       {
         element: <AppShell />,
         children: [
-          { path: '/ride', element: <RequireRole role="RIDER"><RiderHome /></RequireRole> },
-          { path: '/ride/:rideId', element: <RequireRole role="RIDER"><LiveRide /></RequireRole> },
-          { path: '/drive', element: <RequireRole role="DRIVER"><DriverDashboard /></RequireRole> },
-          { path: '/admin', element: <RequireRole role="ADMIN"><AdminDashboard /></RequireRole> },
-          { path: '/history', element: <RequireRole role={['RIDER', 'DRIVER']}><HistoryPage /></RequireRole> },
+          {
+            path: '/ride',
+            element: (
+              <RequireRole role="RIDER">
+                <RiderHome />
+              </RequireRole>
+            ),
+          },
+          {
+            path: '/ride/:rideId',
+            element: (
+              <RequireRole role="RIDER">
+                <LiveRide />
+              </RequireRole>
+            ),
+          },
+          {
+            path: '/drive',
+            element: (
+              <RequireRole role="DRIVER">
+                <DriverDashboard />
+              </RequireRole>
+            ),
+          },
+          {
+            path: '/admin',
+            element: (
+              <RequireRole role="ADMIN">
+                <AdminDashboard />
+              </RequireRole>
+            ),
+          },
+          {
+            path: '/history',
+            element: (
+              <RequireRole role={['RIDER', 'DRIVER']}>
+                <HistoryPage />
+              </RequireRole>
+            ),
+          },
           // a driver's past trip, or any ride for an admin (riders use /ride/:rideId)
-          { path: '/trips/:rideId', element: <RequireRole role={['DRIVER', 'ADMIN']}><TripPage /></RequireRole> },
+          {
+            path: '/trips/:rideId',
+            element: (
+              <RequireRole role={['DRIVER', 'ADMIN']}>
+                <TripPage />
+              </RequireRole>
+            ),
+          },
         ],
       },
       { path: '*', element: <Navigate to="/" replace /> },

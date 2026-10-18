@@ -46,7 +46,10 @@ export function Atmosphere({ map, night }: { map: MlMap; night: boolean }) {
     [],
   );
   const colors = skyColors(night);
-  const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({ azimuth: hash2(i, 21) * 360, elevation: 6 + hash2(i, 22) * 40, size: hash2(i, 23) < 0.15 ? 2.5 : 1.5 })), []);
+  const stars = useMemo(
+    () => Array.from({ length: 70 }, (_, i) => ({ azimuth: hash2(i, 21) * 360, elevation: 6 + hash2(i, 22) * 40, size: hash2(i, 23) < 0.15 ? 2.5 : 1.5 })),
+    [],
+  );
 
   useEffect(() => {
     let last = '';
@@ -128,7 +131,10 @@ export function Atmosphere({ map, night }: { map: MlMap; night: boolean }) {
     <div
       ref={band}
       className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden"
-      style={{ visibility: 'hidden', background: `linear-gradient(to bottom, ${colors.sky} 0%, ${colors.sky} 25%, ${colors.horizon} calc(100% - 24px), ${colors.horizon} 100%)` }}
+      style={{
+        visibility: 'hidden',
+        background: `linear-gradient(to bottom, ${colors.sky} 0%, ${colors.sky} 25%, ${colors.horizon} calc(100% - 24px), ${colors.horizon} 100%)`,
+      }}
       aria-hidden
     >
       {stars.map((s, i) => (

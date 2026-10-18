@@ -6,11 +6,26 @@ import { alertsFor } from './alerts';
 const NOW = Date.parse('2026-10-18T10:00:00Z');
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 
-const payment = (o: Partial<Payment>): Payment => ({
-  id: 'pay-1', rideId: 'ride-9', riderId: 'rider-1', driverId: null, kind: 'RIDE_FARE', status: 'SUCCEEDED', amount: 124,
-  refundedAmount: 0, refundingAmount: 0, refundable: 0, currency: 'INR', provider: 'MOCK', providerRef: null, failureReason: null,
-  createdAt: ago(3), paidAt: null, ...o,
-} as Payment);
+const payment = (o: Partial<Payment>): Payment =>
+  ({
+    id: 'pay-1',
+    rideId: 'ride-9',
+    riderId: 'rider-1',
+    driverId: null,
+    kind: 'RIDE_FARE',
+    status: 'SUCCEEDED',
+    amount: 124,
+    refundedAmount: 0,
+    refundingAmount: 0,
+    refundable: 0,
+    currency: 'INR',
+    provider: 'MOCK',
+    providerRef: null,
+    failureReason: null,
+    createdAt: ago(3),
+    paidAt: null,
+    ...o,
+  }) as Payment;
 
 describe('alertsFor', () => {
   it('flags riders waiting too long and trips running long, the longest first', () => {
@@ -34,7 +49,11 @@ describe('alertsFor', () => {
   });
 
   it('flags failed payments of the last day', () => {
-    const alerts = alertsFor([], [payment({ status: 'FAILED', failureReason: 'Card declined' }), payment({ id: 'old', status: 'FAILED', createdAt: ago(25 * 60) }), payment({ id: 'ok' })], NOW);
+    const alerts = alertsFor(
+      [],
+      [payment({ status: 'FAILED', failureReason: 'Card declined' }), payment({ id: 'old', status: 'FAILED', createdAt: ago(25 * 60) }), payment({ id: 'ok' })],
+      NOW,
+    );
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({ title: 'Payment failed · ₹124', detail: 'Card declined', rideId: 'ride-9' });

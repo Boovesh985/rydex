@@ -50,7 +50,13 @@ function Trip({ rideId }: { rideId: string }) {
   const tracked = !!r && TRACKED.includes(r.status);
   const rx = useRealistic(tracked);
 
-  const initial = useQuery({ queryKey: ['location', rideId], queryFn: () => trackingApi.location(rideId), enabled: tracked, retry: false, refetchInterval: 10_000 });
+  const initial = useQuery({
+    queryKey: ['location', rideId],
+    queryFn: () => trackingApi.location(rideId),
+    enabled: tracked,
+    retry: false,
+    refetchInterval: 10_000,
+  });
   const location = tracked ? newest(live, initial.data) : null;
   useSubscription<LiveLocation>(tracked ? `/topic/rides/${rideId}/location` : null, setLive);
   useOnReconnect(() => {
@@ -75,7 +81,12 @@ function Trip({ rideId }: { rideId: string }) {
 
   const plannedPoints = useMemo<LatLng[] | null>(() => {
     if (!r || !planned.data) return null;
-    return planned.data.polyline ? decodePolyline(planned.data.polyline) : [[r.pickup.lat, r.pickup.lng], [r.drop.lat, r.drop.lng]];
+    return planned.data.polyline
+      ? decodePolyline(planned.data.polyline)
+      : [
+          [r.pickup.lat, r.pickup.lng],
+          [r.drop.lat, r.drop.lng],
+        ];
   }, [planned.data, r?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // the path driven, from after its last jump (a car that was resumed somewhere else, a GPS leap):
   // a straight line across the blocks is not where the car went
@@ -104,7 +115,10 @@ function Trip({ rideId }: { rideId: string }) {
   const hasLocation = !!location;
   const fit = useMemo<LatLng[]>(() => {
     if (!r) return [];
-    const pts: LatLng[] = [[r.pickup.lat, r.pickup.lng], [r.drop.lat, r.drop.lng]];
+    const pts: LatLng[] = [
+      [r.pickup.lat, r.pickup.lng],
+      [r.drop.lat, r.drop.lng],
+    ];
     if (location) pts.push([location.lat, location.lng]);
     return pts;
   }, [r?.status, hasLocation]); // eslint-disable-line react-hooks/exhaustive-deps

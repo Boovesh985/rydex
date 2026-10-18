@@ -71,9 +71,7 @@ describe('LiveRide', () => {
 
   it('is finding a driver until one is assigned, and cancelling then is free', async () => {
     vi.mocked(ridesApi.get).mockResolvedValue(ride());
-    vi.mocked(ridesApi.cancel).mockResolvedValue(
-      ride({ status: 'CANCELLED', cancelledBy: 'RIDER', cancelReason: 'Cancelled by rider' }),
-    );
+    vi.mocked(ridesApi.cancel).mockResolvedValue(ride({ status: 'CANCELLED', cancelledBy: 'RIDER', cancelReason: 'Cancelled by rider' }));
     show();
     const user = userEvent.setup();
 
@@ -88,9 +86,7 @@ describe('LiveRide', () => {
   });
 
   it('shows the driver, the PIN and a live ETA that follows location pushes', async () => {
-    vi.mocked(ridesApi.get).mockResolvedValue(
-      ride({ status: 'DRIVER_ASSIGNED', driverId: 'driver-1', assignedAt: '2026-10-14T10:00:20Z' }),
-    );
+    vi.mocked(ridesApi.get).mockResolvedValue(ride({ status: 'DRIVER_ASSIGNED', driverId: 'driver-1', assignedAt: '2026-10-14T10:00:20Z' }));
     vi.mocked(trackingApi.location).mockResolvedValue(location());
     show();
 
@@ -110,7 +106,14 @@ describe('LiveRide', () => {
 
   it('says when the driver is a free upgrade', async () => {
     // an Economy ride taken by a sedan: no hatchback was free (the fixture's driver drives a Tata Tiago)
-    vi.mocked(driversApi.forRide).mockResolvedValue({ id: 'driver-1', name: 'Driver 14', vehicleType: 'COMFORT', vehicleNumber: 'TN 15 OB 1518', vehicleModel: 'Honda City', rating: 4.7 });
+    vi.mocked(driversApi.forRide).mockResolvedValue({
+      id: 'driver-1',
+      name: 'Driver 14',
+      vehicleType: 'COMFORT',
+      vehicleNumber: 'TN 15 OB 1518',
+      vehicleModel: 'Honda City',
+      rating: 4.7,
+    });
     vi.mocked(ridesApi.get).mockResolvedValue(ride({ status: 'DRIVER_ASSIGNED', driverId: 'driver-1' }));
     vi.mocked(trackingApi.location).mockResolvedValue(location());
     show();
@@ -224,7 +227,11 @@ describe('LiveRide when no driver was found', () => {
 
     const nearby = await screen.findByRole('region', { name: 'Rides nearby now' });
     // the fixture: bike 2 min, economy 3 min, comfort 5 min; auto and XL have nobody nearby
-    expect(within(nearby).getAllByRole('button').map((b) => b.textContent)).toEqual(['Book Bike', 'Book Economy', 'Book Comfort']);
+    expect(
+      within(nearby)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Book Bike', 'Book Economy', 'Book Comfort']);
     expect(within(nearby).getByText(/5 min away · a car came free/)).toBeInTheDocument();
     expect(ridesApi.estimate).toHaveBeenCalledWith(CENTRAL, MARINA);
 

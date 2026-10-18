@@ -29,14 +29,22 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
   // the driver: a fresh ECONOMY car, online right at the pickup so it is the nearest
   const driver = await register(request, 'DRIVER');
   const plate = `E2E ${Date.now() % 100000}`;
-  expect((await request.put('/api/drivers/me', {
-    headers: auth(driver.token),
-    data: { vehicleType: 'ECONOMY', vehicleNumber: plate, vehicleModel: 'Tata Tiago' },
-  })).ok()).toBe(true);
-  expect((await request.patch('/api/drivers/me/status', {
-    headers: auth(driver.token),
-    data: { status: 'AVAILABLE', ...PICKUP },
-  })).ok()).toBe(true);
+  expect(
+    (
+      await request.put('/api/drivers/me', {
+        headers: auth(driver.token),
+        data: { vehicleType: 'ECONOMY', vehicleNumber: plate, vehicleModel: 'Tata Tiago' },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await request.patch('/api/drivers/me/status', {
+        headers: auth(driver.token),
+        data: { status: 'AVAILABLE', ...PICKUP },
+      })
+    ).ok(),
+  ).toBe(true);
 
   // the rider signs in and books
   const rider = await register(request, 'RIDER');
@@ -66,10 +74,15 @@ test('a rider books a ride, follows the driver live and sees the fare', async ({
   await expect(page.getByRole('status', { name: /Finding your driver/ })).toBeVisible();
 
   // the offer reaches our driver; accept it
-  await expect.poll(async () => {
-    const res = await request.get('/api/drivers/me/offer', { headers: auth(driver.token) });
-    return res.status() === 200 ? (await res.json()).rideId : null;
-  }, { timeout: 30_000 }).toBe(rideId);
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get('/api/drivers/me/offer', { headers: auth(driver.token) });
+        return res.status() === 200 ? (await res.json()).rideId : null;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(rideId);
   expect((await request.post(`/api/drivers/me/offers/${rideId}/accept`, { headers: auth(driver.token) })).ok()).toBe(true);
 
   // the rider sees the driver, the plate, the PIN, and the car coming

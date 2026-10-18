@@ -90,7 +90,13 @@ export function RiderHome() {
         {pickup && <PickupPin at={[pickup.lat, pickup.lng]} />}
         {drop && <DropPin at={[drop.lat, drop.lng]} />}
         {estimate && pickup && drop && (
-          <RouteLine polyline={estimate.route.polyline} fallback={[[pickup.lat, pickup.lng], [drop.lat, drop.lng]]} />
+          <RouteLine
+            polyline={estimate.route.polyline}
+            fallback={[
+              [pickup.lat, pickup.lng],
+              [drop.lat, drop.lng],
+            ]}
+          />
         )}
         <FitTo points={fit} />
       </BaseMap>

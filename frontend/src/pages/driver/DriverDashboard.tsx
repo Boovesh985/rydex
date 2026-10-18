@@ -108,8 +108,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
   const lastLat = last?.[0];
   const lastLng = last?.[1];
   const pos = useMemo<Position | null>(
-    () =>
-      simulate ? simPos : (gps.pos ?? (lastLat != null && lastLng != null ? { lat: lastLat, lng: lastLng, heading: null, speed: null } : null)),
+    () => (simulate ? simPos : (gps.pos ?? (lastLat != null && lastLng != null ? { lat: lastLat, lng: lastLng, heading: null, speed: null } : null))),
     [simulate, simPos, gps.pos, lastLat, lastLng],
   );
 
@@ -295,15 +294,20 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
                 </>
               )}
 
-              {config.simulator && (
-                <SimulatorControls on={simulate} onChange={setSim} speed={speedKmh} onSpeed={setSpeedKmh} driving={!!routePoints} />
-              )}
+              {config.simulator && <SimulatorControls on={simulate} onChange={setSim} speed={speedKmh} onSpeed={setSpeedKmh} driving={!!routePoints} />}
             </div>
           )}
         </Sheet>
       )}
       {offer && profile.status === 'AVAILABLE' && (
-        <OfferModal offer={offer} vehicle={profile.vehicleType} busy={offerBusy} error={offerError} onAccept={() => respond(true)} onReject={() => respond(false)} />
+        <OfferModal
+          offer={offer}
+          vehicle={profile.vehicleType}
+          busy={offerBusy}
+          error={offerError}
+          onAccept={() => respond(true)}
+          onReject={() => respond(false)}
+        />
       )}
     </>
   );
@@ -335,14 +339,29 @@ function StatusBar({ profile, online, busy, onToggle }: { profile: DriverProfile
         onClick={onToggle}
         className={`relative h-12 w-36 shrink-0 rounded-full font-display-wide text-[0.8rem] font-black transition-colors disabled:opacity-60 ${online ? 'bg-go text-paper' : 'bg-ink text-chalk'}`}
       >
-        <span className={`absolute top-1 size-10 rounded-full bg-paper shadow transition-[left] ${online ? 'left-[calc(100%-2.75rem)]' : 'left-1'}`} aria-hidden />
+        <span
+          className={`absolute top-1 size-10 rounded-full bg-paper shadow transition-[left] ${online ? 'left-[calc(100%-2.75rem)]' : 'left-1'}`}
+          aria-hidden
+        />
         <span className={`block ${online ? 'pr-10' : 'pl-10'}`}>{profile.status === 'ON_TRIP' ? 'On trip' : online ? 'Online' : 'Go online'}</span>
       </button>
     </div>
   );
 }
 
-function TripPanel({ ride, pos, away, toPickup, progress }: { ride: Ride; pos: Position | null; away: number | null; toPickup: number | null; progress: number | null }) {
+function TripPanel({
+  ride,
+  pos,
+  away,
+  toPickup,
+  progress,
+}: {
+  ride: Ride;
+  pos: Position | null;
+  away: number | null;
+  toPickup: number | null;
+  progress: number | null;
+}) {
   const target = ride.status === 'IN_PROGRESS' ? ride.drop : ride.pickup;
   const label = ride.status === 'DRIVER_ASSIGNED' ? 'To pickup' : ride.status === 'DRIVER_ARRIVED' ? 'At pickup' : 'To drop';
 
@@ -539,7 +558,19 @@ function Earnings() {
   );
 }
 
-function SimulatorControls({ on, onChange, speed, onSpeed, driving }: { on: boolean; onChange: (v: boolean) => void; speed: number; onSpeed: (v: number) => void; driving: boolean }) {
+function SimulatorControls({
+  on,
+  onChange,
+  speed,
+  onSpeed,
+  driving,
+}: {
+  on: boolean;
+  onChange: (v: boolean) => void;
+  speed: number;
+  onSpeed: (v: number) => void;
+  driving: boolean;
+}) {
   return (
     <div className="space-y-2 rounded-xl border border-dashed border-mist p-3">
       <label className="flex items-center justify-between gap-3">
@@ -547,7 +578,14 @@ function SimulatorControls({ on, onChange, speed, onSpeed, driving }: { on: bool
           <span className="block text-sm font-bold">Simulate driving</span>
           <span className="block text-xs text-slate">Demo mode: the vehicle drives the route by itself.</span>
         </span>
-        <input type="checkbox" role="switch" aria-label="Simulate driving" className="size-5 accent-[#16181d]" checked={on} onChange={(e) => onChange(e.target.checked)} />
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Simulate driving"
+          className="size-5 accent-[#16181d]"
+          checked={on}
+          onChange={(e) => onChange(e.target.checked)}
+        />
       </label>
       {on && (
         <>

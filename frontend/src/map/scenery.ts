@@ -90,7 +90,10 @@ function* placeScenery(map: MlMap): Generator<void, Placement> {
   yield;
   // the nearest first, so a cap trims the far edge and never the street in view
   const byDistance = <T extends { lng: number; lat: number }>(items: T[]) =>
-    items.map((p) => ({ p, d: metresBetween(p, center) })).sort((a, b) => a.d - b.d).map(({ p }) => p);
+    items
+      .map((p) => ({ p, d: metresBetween(p, center) }))
+      .sort((a, b) => a.d - b.d)
+      .map(({ p }) => p);
   const keptLamps = byDistance(dedupe(lamps.filter(near), 6)).slice(0, MAX_LAMPS);
   // a street tree does not grow out of a lamp post
   const lampCells = new Set(keptLamps.map((l) => `${Math.round(l.lat * 8000)}:${Math.round(l.lng * 8000)}`));
@@ -173,12 +176,7 @@ function lobe(radius: number, x: number, y: number, z: number, seed: number): TH
 
 /** A rain tree or neem: a crown of a few lumpy lobes, darker underneath. */
 function broadleafCrown(): THREE.BufferGeometry {
-  const lobes = [
-    lobe(2.2, 0, 4.5, 0, 1),
-    lobe(1.6, 1.4, 4.1, 0.5, 2),
-    lobe(1.7, -1.2, 4.2, -0.6, 3),
-    lobe(1.5, 0.3, 5.7, -0.2, 4),
-  ];
+  const lobes = [lobe(2.2, 0, 4.5, 0, 1), lobe(1.6, 1.4, 4.1, 0.5, 2), lobe(1.7, -1.2, 4.2, -0.6, 3), lobe(1.5, 0.3, 5.7, -0.2, 4)];
   const shade = new THREE.Color();
   return mergeGeometries(lobes.map((g) => colored(g, (_x, y) => shade.setScalar(Math.min(1.12, Math.max(0.55, 0.55 + (y - 2.6) * 0.15))))))!;
 }
@@ -224,7 +222,9 @@ function palmCrown(): THREE.BufferGeometry {
     const ring: THREE.Vector3[][] = [];
     for (let i = 0; i <= steps; i++) {
       const s = i / steps;
-      const center = PALM_TOP.clone().addScaledVector(dir, s * length).addScaledVector(up, lift * s - 2.3 * s * s);
+      const center = PALM_TOP.clone()
+        .addScaledVector(dir, s * length)
+        .addScaledVector(up, lift * s - 2.3 * s * s);
       const w = 0.62 * Math.sin(Math.PI * Math.min(1, s * 1.08 + 0.04));
       const fold = up.clone().multiplyScalar(-0.3 * w);
       ring.push([center.clone().addScaledVector(side, w).add(fold), center, center.clone().addScaledVector(side, -w).add(fold)]);

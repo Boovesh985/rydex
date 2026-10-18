@@ -8,7 +8,16 @@ import { renderWithProviders } from '../../test/fixtures';
 import { AdminDashboard } from './AdminDashboard';
 
 vi.mock('../../api/endpoints', () => ({
-  adminApi: { liveDrivers: vi.fn(), driver: vi.fn(), stats: vi.fn(), grid: vi.fn(), demand: vi.fn(), payments: vi.fn(), refund: vi.fn(), searchDrivers: vi.fn() },
+  adminApi: {
+    liveDrivers: vi.fn(),
+    driver: vi.fn(),
+    stats: vi.fn(),
+    grid: vi.fn(),
+    demand: vi.fn(),
+    payments: vi.fn(),
+    refund: vi.fn(),
+    searchDrivers: vi.fn(),
+  },
   ridesApi: { all: vi.fn() },
   trackingApi: { location: vi.fn() },
 }));

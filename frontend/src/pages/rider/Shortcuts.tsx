@@ -85,7 +85,12 @@ export function Shortcuts({ pickup, drop, onDrop }: { pickup: GeoPoint | null; d
       {places.map(({ kind, place }) => {
         const Icon = KIND_ICON[kind];
         return (
-          <button key={kind} type="button" onClick={() => onDrop(place)} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-ink px-3 py-1.5 text-sm font-bold text-chalk hover:bg-ink-2">
+          <button
+            key={kind}
+            type="button"
+            onClick={() => onDrop(place)}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-ink px-3 py-1.5 text-sm font-bold text-chalk hover:bg-ink-2"
+          >
             <Icon className="size-4 shrink-0" aria-hidden />
             {KIND_LABEL[kind]}
             <span className="truncate font-normal text-chalk/70">{shortAddress(place.address)}</span>

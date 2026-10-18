@@ -17,7 +17,13 @@ describe('street-level widths', () => {
   });
 
   it('keeps the map look zoomed out and the real width on the ground at street level', () => {
-    const road = worldWidth([[12, 1.5], [16, 6]], 12);
+    const road = worldWidth(
+      [
+        [12, 1.5],
+        [16, 6],
+      ],
+      12,
+    );
     expect(widthAt(road, 12)).toBeCloseTo(1.5, 5);
     expect(widthAt(road, 16)).toBeCloseTo(6, 5);
     for (const zoom of [20, 21, 22, 23]) {

@@ -22,9 +22,7 @@ export function RideTimeline({ ride }: { ride: Ride }) {
         return (
           <li key={s.label} className="flex gap-3">
             <span className="flex flex-col items-center" aria-hidden>
-              <span
-                className={`mt-1 size-3 rounded-full ${at ? 'bg-ink' : current ? 'border-2 border-ink bg-auto' : 'border-2 border-mist bg-paper'}`}
-              />
+              <span className={`mt-1 size-3 rounded-full ${at ? 'bg-ink' : current ? 'border-2 border-ink bg-auto' : 'border-2 border-mist bg-paper'}`} />
               {i < steps.length - 1 && <span className={`w-0.5 flex-1 ${at ? 'bg-ink' : 'bg-mist'}`} />}
             </span>
             <span className={`flex flex-1 justify-between pb-3 text-sm ${at || current ? 'text-ink' : 'text-slate/70'}`}>

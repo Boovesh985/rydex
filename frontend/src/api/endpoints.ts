@@ -28,12 +28,10 @@ const json = (body: unknown) => ({ method: 'POST', body });
 const point = (p: GeoPoint) => ({ lat: p.lat, lng: p.lng, address: p.address ?? undefined });
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api<AuthResponse>('/api/auth/login', { ...json({ email, password }), anonymous: true }),
+  login: (email: string, password: string) => api<AuthResponse>('/api/auth/login', { ...json({ email, password }), anonymous: true }),
   register: (req: { name: string; email: string; phone?: string; password: string; role: Role }) =>
     api<AuthResponse>('/api/auth/register', { ...json(req), anonymous: true }),
-  logout: (refreshToken: string) =>
-    api<void>('/api/auth/logout', { ...json({ refreshToken }), anonymous: true }),
+  logout: (refreshToken: string) => api<void>('/api/auth/logout', { ...json({ refreshToken }), anonymous: true }),
 };
 
 /** The signed-in user's own things: a rider's Home and Work. */
@@ -52,18 +50,13 @@ export const placesApi = {
     }
     return api<Place[]>(`/api/places/search?${params}`, { signal });
   },
-  reverse: (lat: number, lng: number) =>
-    api<Place>(`/api/places/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`),
+  reverse: (lat: number, lng: number) => api<Place>(`/api/places/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`),
   route: (from: GeoPoint, to: GeoPoint) =>
-    api<Route>(
-      `/api/places/route?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}` +
-        `&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}`,
-    ),
+    api<Route>(`/api/places/route?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}` + `&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}`),
 };
 
 export const ridesApi = {
-  estimate: (pickup: GeoPoint, drop: GeoPoint) =>
-    api<Estimate>('/api/rides/estimate', json({ pickup: point(pickup), drop: point(drop) })),
+  estimate: (pickup: GeoPoint, drop: GeoPoint) => api<Estimate>('/api/rides/estimate', json({ pickup: point(pickup), drop: point(drop) })),
   book: (pickup: GeoPoint, drop: GeoPoint, rideType: RideType, idempotencyKey: string) =>
     api<Ride>('/api/rides', {
       ...json({ pickup: point(pickup), drop: point(drop), rideType }),
@@ -120,6 +113,5 @@ export const adminApi = {
   searchDrivers: (q: string, signal?: AbortSignal) => api<DriverProfile[]>(`/api/admin/drivers?q=${encodeURIComponent(q)}`, { signal }),
   driver: (driverId: string) => api<DriverProfile>(`/api/admin/drivers/${driverId}`),
   payments: (page = 0, size = 20) => api<Page<Payment>>(`/api/admin/payments?page=${page}&size=${size}`),
-  refund: (paymentId: string, reason: string, amount?: number) =>
-    api<Payment>(`/api/admin/payments/${paymentId}/refunds`, json({ reason, amount })),
+  refund: (paymentId: string, reason: string, amount?: number) => api<Payment>(`/api/admin/payments/${paymentId}/refunds`, json({ reason, amount })),
 };

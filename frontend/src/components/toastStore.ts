@@ -19,10 +19,8 @@ let next = 1;
 
 export const useToasts = create<ToastState>((set) => ({
   toasts: [],
-  push: (title, message, tone = 'info') =>
-    set((s) => ({ toasts: [...s.toasts.slice(-2), { id: next++, title, message, tone }] })),
+  push: (title, message, tone = 'info') => set((s) => ({ toasts: [...s.toasts.slice(-2), { id: next++, title, message, tone }] })),
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
 export const toast = (title: string, message?: string, tone?: Tone) => useToasts.getState().push(title, message, tone);
-

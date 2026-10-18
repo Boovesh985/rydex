@@ -23,8 +23,7 @@ export const clock = (iso: string | null | undefined) => (iso ? timeFormat.forma
 export const when = (iso: string | null | undefined) => (iso ? dateFormat.format(new Date(iso)) : '');
 
 /** First line of an address: "Chennai Central, Park Town, ..." -> "Chennai Central". */
-export const shortAddress = (address: string | null | undefined, fallback = 'Pinned location') =>
-  address?.split(',')[0]?.trim() || fallback;
+export const shortAddress = (address: string | null | undefined, fallback = 'Pinned location') => address?.split(',')[0]?.trim() || fallback;
 
 export const rideTypeLabel = { BIKE: 'Bike', AUTO: 'Auto', ECONOMY: 'Economy', COMFORT: 'Comfort', XL: 'XL', PREMIUM: 'Premium' } as const;
 export const rideTypeBlurb = {

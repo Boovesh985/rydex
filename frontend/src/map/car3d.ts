@@ -63,17 +63,89 @@ interface Spec {
 const colours = (type: RideType) => VEHICLE_PAINT[type];
 const SPECS: Record<RideType, Spec> = {
   // a commuter motorbike (hood and shape are unused)
-  BIKE: { kind: 'bike', length: 1.98, width: 0.76, height: 1.1, wheelbase: 1.27, wheelR: 0.3, hood: 0, shape: 'hatch', ...colours('BIKE'), accent: '#16181c', taxiSign: false },
+  BIKE: {
+    kind: 'bike',
+    length: 1.98,
+    width: 0.76,
+    height: 1.1,
+    wheelbase: 1.27,
+    wheelR: 0.3,
+    hood: 0,
+    shape: 'hatch',
+    ...colours('BIKE'),
+    accent: '#16181c',
+    taxiSign: false,
+  },
   // a three-wheeler: green body, yellow canopy
-  AUTO: { kind: 'auto', length: 2.64, width: 1.32, height: 1.72, wheelbase: 2.0, wheelR: 0.21, hood: 0, shape: 'hatch', ...colours('AUTO'), accent: '#16181c', taxiSign: false },
+  AUTO: {
+    kind: 'auto',
+    length: 2.64,
+    width: 1.32,
+    height: 1.72,
+    wheelbase: 2.0,
+    wheelR: 0.21,
+    hood: 0,
+    shape: 'hatch',
+    ...colours('AUTO'),
+    accent: '#16181c',
+    taxiSign: false,
+  },
   // a Chennai call taxi: auto-yellow hatchback, black roof and pillars, roof sign
-  ECONOMY: { kind: 'car', length: 3.85, width: 1.7, height: 1.52, wheelbase: 2.45, wheelR: 0.3, hood: 0.86, shape: 'hatch', ...colours('ECONOMY'), accent: '#17191d', taxiSign: true },
+  ECONOMY: {
+    kind: 'car',
+    length: 3.85,
+    width: 1.7,
+    height: 1.52,
+    wheelbase: 2.45,
+    wheelR: 0.3,
+    hood: 0.86,
+    shape: 'hatch',
+    ...colours('ECONOMY'),
+    accent: '#17191d',
+    taxiSign: true,
+  },
   // a pearl-white sedan with a Marina-teal stripe
-  COMFORT: { kind: 'car', length: 4.5, width: 1.76, height: 1.47, wheelbase: 2.62, wheelR: 0.31, hood: 1.12, shape: 'sedan', ...colours('COMFORT'), accent: '#0b6e79', taxiSign: false },
+  COMFORT: {
+    kind: 'car',
+    length: 4.5,
+    width: 1.76,
+    height: 1.47,
+    wheelbase: 2.62,
+    wheelR: 0.31,
+    hood: 1.12,
+    shape: 'sedan',
+    ...colours('COMFORT'),
+    accent: '#0b6e79',
+    taxiSign: false,
+  },
   // a graphite MUV with roof rails
-  XL: { kind: 'car', length: 4.6, width: 1.82, height: 1.76, wheelbase: 2.75, wheelR: 0.34, hood: 1.0, shape: 'muv', ...colours('XL'), accent: '#c9ced6', taxiSign: false },
+  XL: {
+    kind: 'car',
+    length: 4.6,
+    width: 1.82,
+    height: 1.76,
+    wheelbase: 2.75,
+    wheelR: 0.34,
+    hood: 1.0,
+    shape: 'muv',
+    ...colours('XL'),
+    accent: '#c9ced6',
+    taxiSign: false,
+  },
   // a long midnight-blue saloon with a chrome line
-  PREMIUM: { kind: 'car', length: 4.92, width: 1.84, height: 1.46, wheelbase: 2.86, wheelR: 0.33, hood: 1.28, shape: 'sedan', ...colours('PREMIUM'), accent: '#c9ced6', taxiSign: false },
+  PREMIUM: {
+    kind: 'car',
+    length: 4.92,
+    width: 1.84,
+    height: 1.46,
+    wheelbase: 2.86,
+    wheelR: 0.33,
+    hood: 1.28,
+    shape: 'sedan',
+    ...colours('PREMIUM'),
+    accent: '#c9ced6',
+    taxiSign: false,
+  },
 };
 const UNKNOWN: Spec = { ...SPECS.ECONOMY, body: '#9aa1aa', roof: '#5b616b', taxiSign: false };
 
@@ -87,7 +159,14 @@ const CLEARANCE = 0.17;
 /** A side profile (x forward, y up) extruded across `width` and turned so forward is -z. */
 function sideExtrude(shape: THREE.Shape, width: number, bevel: number): THREE.BufferGeometry {
   const depth = Math.max(0.01, width - 2 * bevel);
-  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 3, curveSegments: 14 });
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: bevel > 0,
+    bevelThickness: bevel,
+    bevelSize: bevel * 0.8,
+    bevelSegments: 3,
+    curveSegments: 14,
+  });
   g.translate(0, 0, -depth / 2);
   g.rotateY(Math.PI / 2);
   return g.index ? g.toNonIndexed() : g;
@@ -359,7 +438,8 @@ interface Template {
 export function vehicleShape(type: RideType) {
   const t = buildTemplate(SPECS[type]);
   const bounds = new THREE.Box3();
-  for (const g of [t.paint, t.roof, t.glass, t.trim, t.wheelsStatic]) bounds.union(new THREE.Box3().setFromBufferAttribute(g.getAttribute('position') as THREE.BufferAttribute));
+  for (const g of [t.paint, t.roof, t.glass, t.trim, t.wheelsStatic])
+    bounds.union(new THREE.Box3().setFromBufferAttribute(g.getAttribute('position') as THREE.BufferAttribute));
   const people = t.people ? new THREE.Box3().setFromBufferAttribute(t.people.getAttribute('position') as THREE.BufferAttribute) : null;
   return { spec: t.spec, bounds, people, wheelAt: t.wheelAt, steers: t.steers, passengers: !!t.passengers, leans: t.leans };
 }
@@ -481,7 +561,8 @@ function buildCarTemplate(s: Spec): Template {
     const tailY = s.shape === 'sedan' ? belt - 0.1 : belt - 0.15;
     const head = merge(bothSides((x) => box(0.36, 0.13, 0.08, x * (W / 2 - 0.29), headY, front + 0.035)));
     const tail = merge(bothSides((x) => box(0.28, 0.15, 0.08, x * (W / 2 - 0.25), tailY, rear - 0.035)));
-    const indicator = (x: number) => merge([box(0.1, 0.08, 0.07, x * (W / 2 - 0.06), headY, front + 0.035), box(0.1, 0.08, 0.07, x * (W / 2 - 0.06), tailY, rear - 0.035)]);
+    const indicator = (x: number) =>
+      merge([box(0.1, 0.08, 0.07, x * (W / 2 - 0.06), headY, front + 0.035), box(0.1, 0.08, 0.07, x * (W / 2 - 0.06), tailY, rear - 0.035)]);
     const plates = merge([
       new THREE.PlaneGeometry(0.52, 0.12).rotateY(Math.PI).translate(0, c + 0.33, front - 0.006),
       new THREE.PlaneGeometry(0.52, 0.12).translate(0, c + 0.44, rear + 0.006),
@@ -552,7 +633,13 @@ function buildBike(s: Spec): Template {
     tint(box(0.24, 0.26, 0.34, 0, 0.42, 0.02), '#4a4e55'),
     tint(box(0.2, 0.2, 0.18, 0, 0.6, -0.17), '#5b6068'),
     ...[0.53, 0.58, 0.63, 0.68].map((y) => tint(box(0.26, 0.012, 0.2, 0, y, -0.17), '#80868e')),
-    tint(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 18).rotateZ(Math.PI / 2).translate(0.13, 0.42, 0).toNonIndexed(), '#9aa0a8'),
+    tint(
+      new THREE.CylinderGeometry(0.1, 0.1, 0.03, 18)
+        .rotateZ(Math.PI / 2)
+        .translate(0.13, 0.42, 0)
+        .toNonIndexed(),
+      '#9aa0a8',
+    ),
     // frame, seat, grab rail
     tint(rod(0.03, P(0, 0.97, 0.5), P(0, 0.62, 0)), black),
     tint(rod(0.026, P(0, 0.92, 0.5), P(0, 0.36, 0.22)), black),
@@ -695,7 +782,10 @@ function buildAuto(s: Spec): Template {
   top.quadraticCurveTo(-f + 0.01, 1.6, -f + 0.1, 1.61);
   top.quadraticCurveTo(0.2, 1.72, ua + 0.02, 1.5);
   top.lineTo(ua + 0.02, 1.55);
-  const roofParts = [sideExtrude(top, W + 0.02, 0.015), ...bothSides((x) => slab(0.03, 0.1, P(x * (W / 2 + 0.01), 1.58, ua), P(x * (W / 2 + 0.01), 1.62, -f + 0.1)))];
+  const roofParts = [
+    sideExtrude(top, W + 0.02, 0.015),
+    ...bothSides((x) => slab(0.03, 0.1, P(x * (W / 2 + 0.01), 1.58, ua), P(x * (W / 2 + 0.01), 1.62, -f + 0.1))),
+  ];
 
   const trimParts = [
     tint(box(W - 0.06, 0.05, 2.1, 0, 0.3, 0.25), black), // floor
@@ -789,14 +879,7 @@ function bikeWheel(R: number): THREE.BufferGeometry {
     tint(new THREE.CylinderGeometry(0.11, 0.11, 0.006, 22).rotateZ(Math.PI / 2).translate(0.045, 0, 0), '#aab0b7'),
   ];
   for (let k = 0; k < 5; k++) {
-    parts.push(
-      tint(
-        new THREE.BoxGeometry(0.02, R - 0.1, 0.028)
-          .translate(0, (R - 0.1) / 2, 0)
-          .rotateX((k * 2 * Math.PI) / 5),
-        '#2a2d33',
-      ),
-    );
+    parts.push(tint(new THREE.BoxGeometry(0.02, R - 0.1, 0.028).translate(0, (R - 0.1) / 2, 0).rotateX((k * 2 * Math.PI) / 5), '#2a2d33'));
   }
   return merge(parts);
 }
@@ -915,7 +998,14 @@ function buildCar(type: RideType | null, shared: Shared): CarModel {
 
   // headlight beams, at night on the focus car: additive cones reaching ahead
   const beams = new THREE.Group();
-  const beamMaterial = new THREE.MeshBasicMaterial({ color: '#fff1b8', transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const beamMaterial = new THREE.MeshBasicMaterial({
+    color: '#fff1b8',
+    transparent: true,
+    opacity: 0.13,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   for (const [x, y] of t.lamps) {
     const cone = new THREE.Mesh(new THREE.ConeGeometry(2.4, 13, 24, 1, true), beamMaterial);
     cone.rotation.x = -Math.PI / 2;
@@ -968,7 +1058,18 @@ function buildCar(type: RideType | null, shared: Shared): CarModel {
     ring,
     spec,
     state: { heading: 0, speed: 0, accel: 0, yawRate: 0, steer: 0, roll: 0, pitch: 0, spin: 0, last: null, turning: 0, turnUntil: 0 },
-    own: [head, tail, left, right, beamMaterial, ...beams.children.map((c) => (c as THREE.Mesh).geometry), shade.geometry, shade.material as THREE.Material, ring.geometry, ring.material as THREE.Material],
+    own: [
+      head,
+      tail,
+      left,
+      right,
+      beamMaterial,
+      ...beams.children.map((c) => (c as THREE.Mesh).geometry),
+      shade.geometry,
+      shade.material as THREE.Material,
+      ring.geometry,
+      ring.material as THREE.Material,
+    ],
   };
 }
 
@@ -1082,7 +1183,11 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
     // auto (tall and light, so more) rolls out of it
     const kind = model.spec.kind;
     const roll =
-      kind === 'bike' ? -clamp(Math.atan((v * omega) / 9.81), -0.6, 0.6) : kind === 'auto' ? clamp(v * omega * 0.018, -0.08, 0.08) : clamp(v * omega * 0.011, -0.055, 0.055);
+      kind === 'bike'
+        ? -clamp(Math.atan((v * omega) / 9.81), -0.6, 0.6)
+        : kind === 'auto'
+          ? clamp(v * omega * 0.018, -0.08, 0.08)
+          : clamp(v * omega * 0.011, -0.055, 0.055);
     st.roll = damp(st.roll, roll, kind === 'bike' ? 0.22 : 0.28, dt);
     st.pitch = damp(st.pitch, clamp(st.accel * 0.011, -0.035, 0.03), 0.3, dt);
     st.spin -= (v * dt) / model.spec.wheelR;

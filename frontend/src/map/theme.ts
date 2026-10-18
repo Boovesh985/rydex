@@ -90,7 +90,18 @@ const NIGHT: Palette = {
  * clean map's white ribbons, and greener parks.
  */
 const STREET: Record<'day' | 'night', Partial<Palette>> = {
-  day: { land: '#e3dfd3', residential: '#dfdbcf', minor: '#a9adb1', majorInner: '#9a9fa5', motorway: '#959aa0', casing: '#d2cfc6', path: '#d6d2c7', park: '#bcd6a6', wood: '#b0cf99', water: '#8cc3cf' },
+  day: {
+    land: '#e3dfd3',
+    residential: '#dfdbcf',
+    minor: '#a9adb1',
+    majorInner: '#9a9fa5',
+    motorway: '#959aa0',
+    casing: '#d2cfc6',
+    path: '#d6d2c7',
+    park: '#bcd6a6',
+    wood: '#b0cf99',
+    water: '#8cc3cf',
+  },
   night: { minor: '#2b313b', majorInner: '#30363f', motorway: '#343a43', casing: '#3a404a', path: '#2d333c' },
 };
 
@@ -210,7 +221,11 @@ function ensureLanes(map: MlMap, night: boolean, realistic: boolean) {
         ],
         layout: { visibility: 'none', 'line-cap': 'butt', 'line-join': 'round' },
         // 15 cm paint, 3 m dashes with 4.5 m gaps (dashes are measured in line widths)
-        paint: { 'line-width': worldWidth([[17, 0.5]], 0.15), 'line-dasharray': [20, 30], 'line-opacity': ['interpolate', ['linear'], ['zoom'], 17, 0, 18, 0.85] },
+        paint: {
+          'line-width': worldWidth([[17, 0.5]], 0.15),
+          'line-dasharray': [20, 30],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 17, 0, 18, 0.85],
+        },
       },
       map.getLayer(BUILDINGS_3D) ? BUILDINGS_3D : firstSymbolLayer(map),
     );

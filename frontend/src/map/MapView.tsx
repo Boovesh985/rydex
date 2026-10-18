@@ -82,7 +82,14 @@ interface BaseMapProps {
 }
 
 /** Full-bleed map; zoom/compass buttons sit bottom-right, clear of the sheets. */
-export function BaseMap({ center = [config.center.lat, config.center.lng], zoom = 14, children, className, realistic = false, night: nightProp }: BaseMapProps) {
+export function BaseMap({
+  center = [config.center.lat, config.center.lng],
+  zoom = 14,
+  children,
+  className,
+  realistic = false,
+  night: nightProp,
+}: BaseMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MlMap | null>(null);
   const [failed, setFailed] = useState(() => !supportsWebGL());
@@ -143,7 +150,14 @@ export function BaseMap({ center = [config.center.lat, config.center.lng], zoom 
       const duration = reducedMotion() ? 0 : 1400;
       // a game-like view: low over the street, the centre pushed down so the horizon and sky show
       const top = Math.round(map.getContainer().clientHeight * 0.3);
-      if (realistic) map.easeTo({ pitch: 72, bearing: map.getBearing() || -18, zoom: Math.max(map.getZoom(), 15.6), padding: { top, bottom: 0, left: 0, right: 0 }, duration });
+      if (realistic)
+        map.easeTo({
+          pitch: 72,
+          bearing: map.getBearing() || -18,
+          zoom: Math.max(map.getZoom(), 15.6),
+          padding: { top, bottom: 0, left: 0, right: 0 },
+          duration,
+        });
       else map.easeTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: duration * 0.7 });
     }
   }, [map, realistic, night]);
@@ -370,7 +384,18 @@ interface AnimatedCarProps {
  * of stopping to wait for a late fix. In realistic mode it is a 3D model and the chase camera
  * ({@link FollowCamera}) can ride behind it.
  */
-export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = null, speed = null, follow = false, carrying = false, label = 'Your driver' }: AnimatedCarProps) {
+export function AnimatedCar({
+  lat,
+  lng,
+  heading,
+  glideMs = 3100,
+  route,
+  type = null,
+  speed = null,
+  follow = false,
+  carrying = false,
+  label = 'Your driver',
+}: AnimatedCarProps) {
   const { map, realistic, cars, followerRef } = useMapState();
   const id = useId();
   const shown = useRef<Pose | null>(null);
@@ -481,7 +506,13 @@ export function AnimatedCar({ lat, lng, heading, glideMs = 3100, route, type = n
  * on the route, looking only ahead of where the car is (`hint`, metres along), so a route passing
  * the same spot twice cannot send it back to the first pass. `endAlong` is where it ends up.
  */
-function planGlide(from: Pose, to: LatLng, heading: number | null, index: PathIndex | null, hint: number | null): { position: (t: number) => Pose; endAlong: number | null } {
+function planGlide(
+  from: Pose,
+  to: LatLng,
+  heading: number | null,
+  index: PathIndex | null,
+  hint: number | null,
+): { position: (t: number) => Pose; endAlong: number | null } {
   const start: LatLng = [from.lat, from.lng];
   const dist = haversine(start, to);
   if (index) {
@@ -516,14 +547,25 @@ function planGlide(from: Pose, to: LatLng, heading: number | null, index: PathIn
  * The planned route: an ink casing under a teal line (dashed when it is only a straight-line
  * guess). `progress` (0..1) greys out the part already driven. Drawn under the 3D buildings.
  */
-export function RouteLine({ polyline, fallback, progress, tone = 'route' }: { polyline: string | null | undefined; fallback?: LatLng[]; progress?: number | null; /** "trail": the path actually driven, solid yellow */ tone?: 'route' | 'trail' }) {
+export function RouteLine({
+  polyline,
+  fallback,
+  progress,
+  tone = 'route',
+}: {
+  polyline: string | null | undefined;
+  fallback?: LatLng[];
+  progress?: number | null;
+  /** "trail": the path actually driven, solid yellow */ tone?: 'route' | 'trail';
+}) {
   const { map, night, realistic } = useMapState();
   const id = `rx-route-${useId().replace(/:/g, '')}`;
   const points = useMemo(() => (polyline ? decodePolyline(polyline) : (fallback ?? [])), [polyline, fallback]);
   const dashed = !polyline && tone === 'route';
   const colors = tone === 'trail' ? ROUTE_COLORS.trail : night ? ROUTE_COLORS.night : ROUTE_COLORS.day;
   const data = useMemo<Feature | FeatureCollection>(
-    () => (points.length < 2 ? emptyLine : { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points.map(([la, ln]) => [ln, la]) } }),
+    () =>
+      points.length < 2 ? emptyLine : { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points.map(([la, ln]) => [ln, la]) } },
     [points],
   );
   const sent = useRef<unknown>(null);
@@ -541,10 +583,39 @@ export function RouteLine({ polyline, fallback, progress, tone = 'route' }: { po
     // pixels when zoomed out; at street level a stripe of real width down the lane (metres): the road
     // ahead fills the lane, the path already driven stays a thin trace
     const trail = tone === 'trail';
-    const width = (base: number, metres: number) => worldWidth([[11, base * 0.45], [15, base], [18, base * 2.2]], trail ? metres * 0.35 : metres);
-    map.addLayer({ id: `${id}-glow`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' }, paint: { 'line-width': width(16, 5), 'line-blur': ['interpolate', ['linear'], ['zoom'], 15, 10, 21, 30], 'line-opacity': 0.4 } }, before);
-    map.addLayer({ id: `${id}-casing`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(8.5, 3.6), 'line-opacity': 0.9 } }, before);
-    map.addLayer({ id: `${id}-line`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(4.5, 2.6) } }, before);
+    const width = (base: number, metres: number) =>
+      worldWidth(
+        [
+          [11, base * 0.45],
+          [15, base],
+          [18, base * 2.2],
+        ],
+        trail ? metres * 0.35 : metres,
+      );
+    map.addLayer(
+      {
+        id: `${id}-glow`,
+        type: 'line',
+        source: id,
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+        paint: { 'line-width': width(16, 5), 'line-blur': ['interpolate', ['linear'], ['zoom'], 15, 10, 21, 30], 'line-opacity': 0.4 },
+      },
+      before,
+    );
+    map.addLayer(
+      {
+        id: `${id}-casing`,
+        type: 'line',
+        source: id,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-width': width(8.5, 3.6), 'line-opacity': 0.9 },
+      },
+      before,
+    );
+    map.addLayer(
+      { id: `${id}-line`, type: 'line', source: id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': width(4.5, 2.6) } },
+      before,
+    );
     return teardown;
   }, [map, id]); // eslint-disable-line react-hooks/exhaustive-deps -- later data goes through setData below
 
@@ -566,7 +637,11 @@ export function RouteLine({ polyline, fallback, progress, tone = 'route' }: { po
       map.setPaintProperty(`${id}-line`, 'line-gradient', undefined);
       map.setPaintProperty(`${id}-line`, 'line-color', colors.line);
     } else {
-      map.setPaintProperty(`${id}-line`, 'line-gradient', p > 0 ? ['step', ['line-progress'], colors.done, p, colors.line] : ['step', ['line-progress'], colors.line, 1, colors.line]);
+      map.setPaintProperty(
+        `${id}-line`,
+        'line-gradient',
+        p > 0 ? ['step', ['line-progress'], colors.done, p, colors.line] : ['step', ['line-progress'], colors.line, 1, colors.line],
+      );
     }
   }, [map, id, colors, dashed, progress, realistic, night, tone]);
 
@@ -783,7 +858,11 @@ export function DemandHeat({ cells }: { cells: { lat: number; lng: number; reque
     const max = Math.max(1, ...cells.map((c) => c.requests));
     return {
       type: 'FeatureCollection',
-      features: cells.map((c) => ({ type: 'Feature', properties: { weight: c.requests / max, requests: c.requests }, geometry: { type: 'Point', coordinates: [c.lng, c.lat] } })),
+      features: cells.map((c) => ({
+        type: 'Feature',
+        properties: { weight: c.requests / max, requests: c.requests },
+        geometry: { type: 'Point', coordinates: [c.lng, c.lat] },
+      })),
     };
   }, [cells]);
   const sent = useRef<unknown>(null);
@@ -807,7 +886,19 @@ export function DemandHeat({ cells }: { cells: { lat: number; lng: number; reque
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 15, 1.6],
           'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 18, 15, 48],
           'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.75, 16, 0.25],
-          'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(255,194,26,0)', 0.25, 'rgba(255,194,26,0.45)', 0.6, 'rgba(240,120,40,0.7)', 1, 'rgba(215,54,43,0.85)'],
+          'heatmap-color': [
+            'interpolate',
+            ['linear'],
+            ['heatmap-density'],
+            0,
+            'rgba(255,194,26,0)',
+            0.25,
+            'rgba(255,194,26,0.45)',
+            0.6,
+            'rgba(240,120,40,0.7)',
+            1,
+            'rgba(215,54,43,0.85)',
+          ],
         },
       },
       before,
@@ -857,7 +948,18 @@ export function GridOverlay({ cells }: { cells: GridCellShape[] }) {
         return {
           type: 'Feature',
           properties: { center: c.center, label: c.label },
-          geometry: { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [w, s],
+                [e, s],
+                [e, n],
+                [w, n],
+                [w, s],
+              ],
+            ],
+          },
         };
       }),
     }),
@@ -873,8 +975,14 @@ export function GridOverlay({ cells }: { cells: GridCellShape[] }) {
     const before = map.getLayer(BUILDINGS_3D) ? BUILDINGS_3D : undefined;
     map.addSource(source, { type: 'geojson', data });
     sent.current = data;
-    map.addLayer({ id: `${source}-fill`, type: 'fill', source, paint: { 'fill-color': '#16181d', 'fill-opacity': ['case', ['get', 'center'], 0.08, 0.03] } }, before);
-    map.addLayer({ id: `${source}-line`, type: 'line', source, paint: { 'line-width': ['case', ['get', 'center'], 2.5, 1.2], 'line-dasharray': [3, 2] } }, before);
+    map.addLayer(
+      { id: `${source}-fill`, type: 'fill', source, paint: { 'fill-color': '#16181d', 'fill-opacity': ['case', ['get', 'center'], 0.08, 0.03] } },
+      before,
+    );
+    map.addLayer(
+      { id: `${source}-line`, type: 'line', source, paint: { 'line-width': ['case', ['get', 'center'], 2.5, 1.2], 'line-dasharray': [3, 2] } },
+      before,
+    );
     map.addLayer({
       id: `${source}-label`,
       type: 'symbol',
@@ -985,7 +1093,13 @@ export function DispatchLines({ lines }: { lines: DispatchLine[] }) {
       features: lines.map((l) => ({
         type: 'Feature',
         properties: { kind: l.kind },
-        geometry: { type: 'LineString', coordinates: [[l.from[1], l.from[0]], [l.to[1], l.to[0]]] },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [l.from[1], l.from[0]],
+            [l.to[1], l.to[0]],
+          ],
+        },
       })),
     }),
     [lines],
