@@ -41,20 +41,22 @@ function proxyTo(target: string): ProxyOptions {
   };
 }
 
+function proxies() {
+  return {
+    ...Object.fromEntries(routes.map(([prefix, target]) => [prefix, proxyTo(target)])),
+    '/ws': { target: tracking, ws: true },
+  };
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // MapLibre's tile worker is an ES module
   worker: { format: 'es' },
   // MapLibre (~1 MB, loaded with the first map) and three.js (loaded with realistic mode) are single libraries
   build: { chunkSizeWarningLimit: 1100 },
-  server: {
-    port: 5173,
-    strictPort: true,
-    proxy: {
-      ...Object.fromEntries(routes.map(([prefix, target]) => [prefix, proxyTo(target)])),
-      '/ws': { target: tracking, ws: true },
-    },
-  },
+  server: { port: 5173, strictPort: true, proxy: proxies() },
+  // `vite preview` serves the production build against the same services (bundle checks)
+  preview: { port: 4173, strictPort: true, proxy: proxies() },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

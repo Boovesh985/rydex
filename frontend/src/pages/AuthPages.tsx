@@ -1,10 +1,11 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { authApi } from '../api/endpoints';
 import { errorMessage } from '../api/http';
 import type { Role } from '../api/types';
 import { homeFor, useAuth } from '../auth/store';
 import { Wordmark } from '../components/AppShell';
+import { prefetchMap } from '../map/prefetch';
 import { Check, Circle } from 'lucide-react';
 import { Button, ErrorNote, Field, PasswordField } from '../components/ui';
 
@@ -56,7 +57,20 @@ function useSignedInRedirect() {
   return user ? <Navigate to={homeFor(user.role)} replace /> : null;
 }
 
+/**
+ * While the user types, fetch the map's code (MapLibre, ~300 KB compressed, and its worker): every
+ * screen after sign-in opens on a map, which then draws without waiting for the download.
+ */
+function usePrefetchMap() {
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') return;
+    const timer = setTimeout(prefetchMap, 600);
+    return () => clearTimeout(timer);
+  }, []);
+}
+
 export function LoginPage() {
+  usePrefetchMap();
   const signIn = useAuth((s) => s.signIn);
   const navigate = useNavigate();
   const location = useLocation();
