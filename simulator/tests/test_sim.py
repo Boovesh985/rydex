@@ -7,7 +7,7 @@ from rydex_sim.api import AuthBudget, Endpoints
 from rydex_sim.geo import along, bearing, decode_polyline, haversine, offset, path_length, random_point
 from rydex_sim.otp import otp_for
 from rydex_sim.stomp import Frame
-from simulate import TYPES, parse_args, seeded_order
+from simulate import TYPES, parse_args, seeded_order, seeded_vehicle
 
 CENTRAL = (13.0827, 80.2707)
 
@@ -118,3 +118,40 @@ def test_bikes_filter_through_jams_and_autos_are_slower():
     assert pace("BIKE", 0.25) == pytest.approx(0.5)  # a jam that quarters a car's speed only halves a bike's
     assert pace("AUTO", 1.0) == pytest.approx(0.8)
     assert pace("AUTO", 0.25) < pace("BIKE", 0.25)
+
+
+def test_seeded_vehicle_matches_the_driver_seed():
+    # R__seed_demo_drivers: (ARRAY[...])[1 + g % len]
+    assert seeded_vehicle(1) == ("ECONOMY", "Hyundai i20")
+    assert seeded_vehicle(24) == ("PREMIUM", "Toyota Camry")
+    assert seeded_vehicle(27) == ("BIKE", "Bajaj Pulsar 150")
+    assert seeded_vehicle(50) == ("AUTO", "Piaggio Ape City")
+
+
+class FakeSession:
+    def __init__(self):
+        self.calls = []
+
+    async def call(self, method, path, body=None):
+        self.calls.append((method, path, body))
+        if method == "PUT":
+            return {"vehicleType": body["vehicleType"], "vehicleNumber": body["vehicleNumber"], "status": "OFFLINE"}
+        return {"status": body["status"]}
+
+
+def test_an_npc_driver_left_on_an_old_vehicle_takes_its_seeded_one():
+    from rydex_sim.driver import Settings, SimDriver, Stats
+
+    session = FakeSession()
+    driver = SimDriver("driver24", session, None, Settings(center=CENTRAL), Stats(), random.Random(1),
+                       fleet=("PREMIUM", "Toyota Camry"))
+    me = {"vehicleType": "ECONOMY", "vehicleNumber": "TN 03 YM 1888", "status": "AVAILABLE"}
+
+    after = asyncio.run(driver._take_fleet_vehicle(me))
+
+    # the type can only change while offline: go offline first, then change the vehicle
+    assert session.calls == [
+        ("PATCH", "/api/drivers/me/status", {"status": "OFFLINE"}),
+        ("PUT", "/api/drivers/me", {"vehicleType": "PREMIUM", "vehicleNumber": "TN 03 YM 1888", "vehicleModel": "Toyota Camry"}),
+    ]
+    assert after["vehicleType"] == "PREMIUM"

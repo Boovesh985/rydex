@@ -1,5 +1,5 @@
 import type { LiveLocation, Ride } from '../api/types';
-import { distance, inr, minutes, rideTypeLabel, shortAddress, when } from '../lib/format';
+import { distance, inr, minutes, rideTypeLabel, shortAddress, vehicleNoun, when } from '../lib/format';
 
 /** The one number for a ride, as the trip page and the operations map's ride-along show it. */
 export function tripMeter(r: Ride, location: LiveLocation | null): { label: string; value: string; unit?: string; sub?: string; tone?: 'auto' | 'go' } {
@@ -9,7 +9,7 @@ export function tripMeter(r: Ride, location: LiveLocation | null): { label: stri
     case 'DRIVER_ASSIGNED':
       return location
         ? { label: 'To pickup', value: minutes(location.etaS).replace(' min', ''), unit: 'min', sub: `${distance(location.distanceM)} from ${shortAddress(r.pickup.address)}` }
-        : { label: 'To pickup', value: '···', sub: 'Waiting for the car’s position' };
+        : { label: 'To pickup', value: '···', sub: `Waiting for the ${vehicleNoun(r.rideType)}’s position` };
     case 'DRIVER_ARRIVED':
       return { label: 'At pickup', value: 'WAIT', tone: 'go', sub: `Waiting at ${shortAddress(r.pickup.address)}` };
     case 'IN_PROGRESS':

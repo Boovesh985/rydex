@@ -33,8 +33,10 @@ UPDATE drivers SET simulated = true
 WHERE user_id BETWEEN '00000000-0000-4000-8000-000000000202' AND '00000000-0000-4000-8000-000000000250'
   AND NOT simulated;
 
--- An existing database keeps its NPC fleet (drivers 02-50) in this mix too; a driver on a trip is
--- left alone until the seed runs again. driver01 keeps whatever its owner chose.
+-- An existing database keeps its NPC fleet (drivers 02-50) in this mix too. Flyway runs this only
+-- when the file changes, so a driver on a trip right then is left behind: the simulator switches it
+-- to its seeded vehicle when it next signs in (rydex_sim SimDriver.fleet). driver01 keeps whatever
+-- its owner chose.
 UPDATE drivers d
 SET vehicle_type = f.vehicle_type, vehicle_model = f.vehicle_model, updated_at = now()
 FROM seed_fleet f

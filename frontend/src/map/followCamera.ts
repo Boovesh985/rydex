@@ -123,7 +123,7 @@ export class FollowCamera {
     this.bias = options.zoomBias ?? 0;
     this.view = VIEWS[useMapPrefs.getState().camera];
     this.zoom = map.getZoom();
-    this.zoomTarget = this.view.zoom + this.bias;
+    this.zoomTarget = clamp(this.view.zoom + this.bias, FOLLOW_MIN_ZOOM, FOLLOW_MAX_ZOOM);
     this.pitch = map.getPitch();
     this.pitchTarget = this.view.pitch;
     const padding = map.getPadding();

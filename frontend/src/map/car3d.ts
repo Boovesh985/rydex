@@ -857,6 +857,8 @@ interface CarModel {
   ring: THREE.Mesh;
   spec: Spec;
   state: Dynamics;
+  /** this car's own materials and geometries (the template's and the shared ones stay) */
+  own: { dispose(): void }[];
 }
 
 interface Shared {
@@ -966,7 +968,14 @@ function buildCar(type: RideType | null, shared: Shared): CarModel {
     ring,
     spec,
     state: { heading: 0, speed: 0, accel: 0, yawRate: 0, steer: 0, roll: 0, pitch: 0, spin: 0, last: null, turning: 0, turnUntil: 0 },
+    own: [head, tail, left, right, beamMaterial, ...beams.children.map((c) => (c as THREE.Mesh).geometry), shade.geometry, shade.material as THREE.Material, ring.geometry, ring.material as THREE.Material],
   };
+}
+
+/** Takes a car out of the scene and frees what only it used (cars come and go all day on the admin map). */
+function dropModel(scene: THREE.Scene, model: CarModel) {
+  scene.remove(model.root);
+  for (const o of model.own) o.dispose();
 }
 
 export interface CarLayer {
@@ -1097,7 +1106,7 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
       applyNight();
     },
     onRemove() {
-      for (const m of models.values()) scene.remove(m.root);
+      for (const m of models.values()) dropModel(scene, m);
       models.clear();
       renderer = null;
       map = null;
@@ -1129,7 +1138,7 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
       for (const [carId, pose] of poses) {
         let model = models.get(carId);
         if (!model || model.spec !== (pose.type ? SPECS[pose.type] : UNKNOWN)) {
-          if (model) scene.remove(model.root);
+          if (model) dropModel(scene, model);
           model = buildCar(pose.type, shared);
           models.set(carId, model);
           scene.add(model.root);
@@ -1193,7 +1202,7 @@ export function createCarLayer(id = 'rx-cars-3d'): CarLayer {
     remove(carId) {
       poses.delete(carId);
       const model = models.get(carId);
-      if (model) scene.remove(model.root);
+      if (model) dropModel(scene, model);
       models.delete(carId);
       map?.triggerRepaint();
     },

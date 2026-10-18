@@ -76,5 +76,5 @@ Until now Rydex had three cab types (Economy, Comfort, XL). A ride type runs thr
 - **No new services and no new tables.** It is one enum, two constraints, configuration and the web app.
 - **The six options are a longer list** in the booking sheet. It is ordered cheapest first, and the default stays Economy.
 - **A smaller fleet per type.** 49 NPC drivers spread over six types leaves fewer of each. Premium (3 drivers) can say "No cars nearby" in a quiet corner of the city.
-- **Re-typing an existing database:** NPC drivers on a trip during the upgrade keep their old type until driver-service starts again after their trip ends.
+- **Re-typing an existing database:** Flyway re-runs the seed only when it changes, so NPC drivers on a trip during the upgrade would keep their old type for good. The simulator puts them right: an NPC driver not on a trip that signs in on another vehicle than the seeded one goes offline, switches to it (`PUT /api/drivers/me`, as a driver would) and goes online.
 - **More geometry per vehicle.** The figures add about 1,500 triangles per bike or auto, which is still lighter than the trees around it.

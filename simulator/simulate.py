@@ -37,8 +37,24 @@ CITY = {"drivers": 40, "riders": 30, "center": "13.0450,80.2450", "radius_km": 7
 # the seeded fleet (driver-service R__seed_demo_drivers, ADR 0018): which vehicle driver NN drives
 TYPES = {"ECONOMY": range(1, 13), "COMFORT": range(13, 20), "XL": range(20, 24), "PREMIUM": range(24, 27),
          "BIKE": range(27, 40), "AUTO": range(40, 51)}
+# and its make and model (the seed's ARRAY[...][1 + NN % len])
+MODELS = {
+    "ECONOMY": ("Maruti Suzuki Swift", "Hyundai i20", "Tata Tiago", "Maruti Suzuki WagonR"),
+    "COMFORT": ("Honda City", "Hyundai Verna", "Skoda Slavia"),
+    "XL": ("Toyota Innova Crysta", "Maruti Suzuki Ertiga", "Kia Carens"),
+    "PREMIUM": ("Toyota Camry", "Skoda Superb", "Mercedes-Benz E-Class"),
+    "BIKE": ("Hero Splendor Plus", "Honda Shine", "TVS Raider", "Bajaj Pulsar 150"),
+    "AUTO": ("Bajaj RE", "TVS King", "Piaggio Ape City"),
+}
 
 log = logging.getLogger("rydex.sim")
+
+
+def seeded_vehicle(n: int) -> tuple[str, str]:
+    """The vehicle type and model seeded driver NN drives."""
+    vehicle = next(t for t, numbers in TYPES.items() if n in numbers)
+    models = MODELS[vehicle]
+    return vehicle, models[n % len(models)]
 
 
 def seeded_order() -> list[int]:
@@ -123,7 +139,7 @@ async def run(args: argparse.Namespace) -> None:
         api = Api(endpoints, budget, http)
         drivers = [
             SimDriver(f"driver{n:02d}", Session(api, f"driver{n:02d}@rydex.dev", args.password), endpoints, settings,
-                      stats, random.Random(rng.random()))
+                      stats, random.Random(rng.random()), fleet=seeded_vehicle(n))
             for n in seeded_order()[: args.drivers]
         ]
         riders = [

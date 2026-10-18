@@ -52,6 +52,8 @@ export function AdminDashboard() {
   const [picked, setRiding] = useState<string | null>(null);
   // a driver who went offline leaves nothing to follow
   const online = !drivers.data || drivers.data.some((d) => d.driverId === picked && (d.status === 'AVAILABLE' || d.status === 'ON_TRIP'));
+  // and let go of them, so they do not pull the camera back when they come online again
+  if (picked && !online) setRiding(null);
   const riding = picked && online ? picked : null;
   const ridingCar = riding ? (city.fleet.find((c) => c.id === riding) ?? null) : null;
   const ridingRide = riding ? (inFlight.data?.items.find((r) => r.driverId === riding && RIDING.includes(r.status)) ?? null) : null;
@@ -85,6 +87,8 @@ export function AdminDashboard() {
           {layers.drivers && <Fleet cars={city.fleet} hide={riding} onSelect={setRiding} />}
           {ridingCar && (
             <AnimatedCar
+              // a new vehicle starts where it is, not gliding over from the last one
+              key={ridingCar.id}
               lat={ridingCar.lat}
               lng={ridingCar.lng}
               heading={ridingCar.heading}

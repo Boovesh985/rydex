@@ -41,7 +41,7 @@ export function RideAlong({ driverId, duty, speedKmh, ride, onClose }: Props) {
         <div>
           <Eyebrow>Riding along</Eyebrow>
           <p className="text-sm text-slate">
-            {DOING[duty]}
+            {ride?.status === 'DRIVER_ARRIVED' ? 'Waiting at the pickup' : DOING[duty]}
             {speedKmh != null && ` · ${Math.round(speedKmh)} km/h`}
           </p>
         </div>

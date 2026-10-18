@@ -81,8 +81,10 @@ class TripOver(Exception):
 
 class SimDriver:
     def __init__(self, label: str, session: Session, endpoints: Endpoints, settings: Settings, stats: Stats,
-                 rng: random.Random):
+                 rng: random.Random, fleet: tuple[str, str] | None = None):
         self.label = label
+        # the vehicle (type, model) this NPC drives in the seeded fleet mix (ADR 0018)
+        self.fleet = fleet
         self.session = session
         self.endpoints = endpoints
         self.s = settings
@@ -104,6 +106,8 @@ class SimDriver:
 
     async def run(self) -> None:
         me = await self.session.call("GET", "/api/drivers/me")
+        if self.fleet and me["vehicleType"] != self.fleet[0] and me["status"] != "ON_TRIP":
+            me = await self._take_fleet_vehicle(me)
         vehicle = self.vehicle = me["vehicleType"]
         if me.get("lastLocation"):
             last = (me["lastLocation"]["lat"], me["lastLocation"]["lng"])
@@ -135,6 +139,24 @@ class SimDriver:
                 t.cancel()
             if self.online:
                 self.stats.online -= 1
+
+    async def _take_fleet_vehicle(self, me: dict[str, Any]) -> dict[str, Any]:
+        """
+        Switches to the seeded fleet's vehicle. The seed re-types NPC drivers only when it changes, and
+        leaves those on a trip alone, so a database upgraded mid-trip would keep them on the old type.
+        The vehicle type can only change while offline.
+        """
+        vehicle, model = self.fleet  # type: ignore[misc]
+        try:
+            if me["status"] != "OFFLINE":
+                await self.session.call("PATCH", "/api/drivers/me/status", {"status": "OFFLINE"})
+            me = await self.session.call("PUT", "/api/drivers/me",
+                                         {"vehicleType": vehicle, "vehicleNumber": me["vehicleNumber"],
+                                          "vehicleModel": model})
+            log.info("%s now drives a %s (%s)", self.label, vehicle, model)
+        except ApiError as e:
+            log.warning("%s keeps its %s: %s", self.label, me["vehicleType"], e)
+        return me
 
     async def go_offline(self) -> None:
         if self.online and self.ride_id is None:
