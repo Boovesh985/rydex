@@ -7,8 +7,9 @@ import { CENTRAL, MARINA, estimate, renderWithProviders, ride } from '../../test
 import { BookingPanel } from './BookingPanel';
 
 vi.mock('../../api/endpoints', () => ({
-  ridesApi: { estimate: vi.fn(), book: vi.fn() },
+  ridesApi: { estimate: vi.fn(), book: vi.fn(), list: vi.fn().mockResolvedValue({ items: [], page: 0, size: 20, total: 0 }) },
   placesApi: { search: vi.fn() },
+  meApi: { places: vi.fn().mockResolvedValue([]), savePlace: vi.fn(), forgetPlace: vi.fn() },
 }));
 
 function setup(props: Partial<Parameters<typeof BookingPanel>[0]> = {}) {

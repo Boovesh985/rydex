@@ -29,6 +29,14 @@ public class TestApi {
         return call(HttpMethod.POST, path, token, body, Map.of());
     }
 
+    public ResponseEntity<JsonNode> put(String path, String token, Object body) {
+        return call(HttpMethod.PUT, path, token, body, Map.of());
+    }
+
+    public ResponseEntity<JsonNode> delete(String path, String token) {
+        return call(HttpMethod.DELETE, path, token, null, Map.of());
+    }
+
     public ResponseEntity<JsonNode> call(HttpMethod method, String path, String token, Object body,
                                          Map<String, String> headers) {
         var spec = http.method(method).uri(path);

@@ -8,6 +8,7 @@ import { PlaceSearch } from '../../components/PlaceSearch';
 import { Button, ErrorNote, Eyebrow, Meter, Spinner } from '../../components/ui';
 import { VehicleIcon } from '../../components/VehicleIcon';
 import { distance, inr, minutes, rideTypeBlurb, rideTypeLabel, rideTypeSeats, vehicleNoun } from '../../lib/format';
+import { Shortcuts } from './Shortcuts';
 
 const pickupDot = <span className="block size-3.5 rounded-full border-[3.5px] border-ink bg-paper" />;
 const dropDot = <span className="block size-3.5 rounded-[3px] bg-ink" />;
@@ -92,6 +93,8 @@ export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusFi
           <ArrowDownUp className="size-4" />
         </button>
       </div>
+
+      <Shortcuts pickup={pickup} drop={drop} onDrop={onDrop} />
 
       {estimate.isFetching && !estimate.data && <Spinner label="Pricing your trip…" />}
       <ErrorNote>{estimate.error && errorMessage(estimate.error)}</ErrorNote>

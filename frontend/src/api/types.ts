@@ -40,6 +40,13 @@ export interface GeoPoint {
   address?: string | null;
 }
 
+/** A rider's Home or Work, saved on the server. */
+export type PlaceKind = 'HOME' | 'WORK';
+export interface SavedPlace {
+  kind: PlaceKind;
+  place: GeoPoint;
+}
+
 export interface Place {
   name: string;
   address: string;

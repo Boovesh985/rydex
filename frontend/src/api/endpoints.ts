@@ -19,6 +19,8 @@ import type {
   RideType,
   Role,
   Route,
+  SavedPlace,
+  PlaceKind,
   Stats,
 } from './types';
 
@@ -32,6 +34,13 @@ export const authApi = {
     api<AuthResponse>('/api/auth/register', { ...json(req), anonymous: true }),
   logout: (refreshToken: string) =>
     api<void>('/api/auth/logout', { ...json({ refreshToken }), anonymous: true }),
+};
+
+/** The signed-in user's own things: a rider's Home and Work. */
+export const meApi = {
+  places: () => api<SavedPlace[]>('/api/me/places'),
+  savePlace: (kind: PlaceKind, place: GeoPoint) => api<SavedPlace>(`/api/me/places/${kind}`, { method: 'PUT', body: point(place) }),
+  forgetPlace: (kind: PlaceKind) => api<void>(`/api/me/places/${kind}`, { method: 'DELETE' }),
 };
 
 export const placesApi = {
