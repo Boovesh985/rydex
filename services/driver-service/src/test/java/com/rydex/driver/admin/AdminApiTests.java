@@ -86,6 +86,24 @@ class AdminApiTests extends IntegrationTest {
     }
 
     @Test
+    void adminFindsDriversByNameOrPlate() {
+        TestDriver bike = onlineDriver(RideType.BIKE, CENTER);
+        String plate = jdbc.sql("SELECT vehicle_number FROM drivers WHERE user_id = :id").param("id", bike.id())
+                .query(String.class).single(); // e.g. TST-1a2b3c4d
+        String name = jdbc.sql("SELECT name FROM drivers WHERE user_id = :id").param("id", bike.id()).query(String.class).single();
+
+        // part of the plate, any case, spaces ignored
+        JsonNode byPlate = api().get("/api/admin/drivers?q=" + plate.substring(4, 10).toLowerCase(), TestTokens.admin()).getBody();
+        assertThat(byPlate.valueStream().map(d -> d.path("id").asString())).contains(bike.id().toString());
+        assertThat(byPlate.get(0).path("lastLocation").path("lat").asDouble()).isEqualTo(CENTER.lat(), within(1e-4));
+        JsonNode byName = api().get("/api/admin/drivers?q=" + name.substring(0, Math.min(name.length(), 6)), TestTokens.admin()).getBody();
+        assertThat(byName.size()).isBetween(1, 10);
+
+        assertThat(api().get("/api/admin/drivers?q=x", TestTokens.admin()).getStatusCode().value()).isEqualTo(400);
+        assertThat(api().get("/api/admin/drivers?q=" + plate, bike.token()).getStatusCode().value()).isEqualTo(403);
+    }
+
+    @Test
     void candidatesDryRunRanksWithoutOffering() {
         TestDriver near = onlineDriver(RideType.ECONOMY, north(CENTER, 400));
         TestDriver far = onlineDriver(RideType.ECONOMY, north(CENTER, 2400));

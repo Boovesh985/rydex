@@ -130,6 +130,12 @@ class AdminController {
         return matching.job(rideId).orElseThrow(() -> ApiException.notFound("Matching job"));
     }
 
+    @GetMapping("/drivers")
+    @Operation(summary = "Find drivers by name or plate (at least 2 letters; plates match with spaces ignored)")
+    List<DriverView> search(@RequestParam String q) {
+        return drivers.search(q);
+    }
+
     @GetMapping("/drivers/{driverId}")
     @Operation(summary = "One driver: profile, vehicle, status, current ride and last position")
     DriverView driver(@PathVariable UUID driverId) {

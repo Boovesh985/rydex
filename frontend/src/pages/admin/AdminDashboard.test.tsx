@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminApi, ridesApi, trackingApi } from '../../api/endpoints';
@@ -8,7 +8,7 @@ import { renderWithProviders } from '../../test/fixtures';
 import { AdminDashboard } from './AdminDashboard';
 
 vi.mock('../../api/endpoints', () => ({
-  adminApi: { liveDrivers: vi.fn(), driver: vi.fn(), stats: vi.fn(), grid: vi.fn(), demand: vi.fn(), payments: vi.fn(), refund: vi.fn() },
+  adminApi: { liveDrivers: vi.fn(), driver: vi.fn(), stats: vi.fn(), grid: vi.fn(), demand: vi.fn(), payments: vi.fn(), refund: vi.fn(), searchDrivers: vi.fn() },
   ridesApi: { all: vi.fn() },
   trackingApi: { location: vi.fn() },
 }));
@@ -75,6 +75,13 @@ describe('AdminDashboard ride-along', () => {
     vi.mocked(adminApi.stats).mockReturnValue(new Promise(() => undefined));
     vi.mocked(ridesApi.all).mockResolvedValue({ items: [], page: 0, size: 100, total: 0 });
     vi.mocked(trackingApi.location).mockRejectedValue(new Error('no fix'));
+    vi.mocked(adminApi.payments).mockResolvedValue({ items: [], page: 0, size: 50, total: 0 });
+    vi.mocked(adminApi.searchDrivers).mockResolvedValue([
+      profile,
+      { ...profile, id: 'driver-31', name: 'Driver 31', status: 'OFFLINE' },
+      // "free" in the database, but its app went quiet: not on the map, nothing to ride along with
+      { ...profile, id: 'driver-ghost', name: 'Ghost Driver', status: 'AVAILABLE' },
+    ]);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -93,6 +100,22 @@ describe('AdminDashboard ride-along', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('region', { name: 'Ride along' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('followed')).not.toBeInTheDocument();
+  });
+
+  it('finds a vehicle by plate and rides along with it', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderWithProviders(<AdminDashboard />);
+
+    await user.type(screen.getByPlaceholderText(/Find a vehicle/), 'tn06');
+    const found = await screen.findByRole('region', { name: 'Find a vehicle' });
+    expect(await within(found).findByText('Driver 31')).toBeInTheDocument();
+    expect(within(found).getAllByText('Offline')).toHaveLength(2);
+    expect(within(found).getAllByRole('button', { name: /Ride along/ })).toHaveLength(1);
+    expect(adminApi.searchDrivers).toHaveBeenCalledWith('tn06', expect.anything());
+
+    await user.click(within(found).getByRole('button', { name: /Ride along/ }));
+    expect(await screen.findByRole('region', { name: 'Ride along' })).toBeInTheDocument();
+    expect(screen.getByTestId('followed')).toHaveTextContent('Bike · free');
   });
 
   it('lets go of a driver who goes offline, and stays let go when they come back', async () => {

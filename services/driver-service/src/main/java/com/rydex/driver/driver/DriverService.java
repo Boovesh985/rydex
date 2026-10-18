@@ -16,9 +16,12 @@ import com.rydex.presence.PresenceStore;
 import com.rydex.presence.PresenceStore.HeartbeatResult;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -123,6 +126,17 @@ public class DriverService {
             Driver driver = load(user);
             presence.setStatus(driver.getId(), driver.getStatus(), driver.getVehicleType());
         }
+    }
+
+    /** Admin: drivers whose name or plate contains {@code q} (plates match with spaces ignored), at most 10. */
+    @Transactional(readOnly = true)
+    public List<DriverView> search(String q) {
+        String text = q == null ? "" : q.trim();
+        if (text.length() < 2) {
+            throw ApiException.badRequest("Type at least 2 letters of a name or plate");
+        }
+        String plate = text.toUpperCase(Locale.ROOT).replace(" ", "");
+        return drivers.search(text, plate, PageRequest.of(0, 10)).stream().map(this::view).toList();
     }
 
     /** Admin: any driver's profile, status and position (the operations map's ride-along panel). */

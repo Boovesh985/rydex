@@ -117,6 +117,7 @@ export const adminApi = {
   demand: (hours = 24) => api<DemandCell[]>(`/api/admin/demand?hours=${hours}`),
   grid: (lat: number, lng: number) => api<Grid>(`/api/admin/grid?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`),
   liveDrivers: () => api<LiveDriver[]>('/api/admin/drivers/live'),
+  searchDrivers: (q: string, signal?: AbortSignal) => api<DriverProfile[]>(`/api/admin/drivers?q=${encodeURIComponent(q)}`, { signal }),
   driver: (driverId: string) => api<DriverProfile>(`/api/admin/drivers/${driverId}`),
   payments: (page = 0, size = 20) => api<Page<Payment>>(`/api/admin/payments?page=${page}&size=${size}`),
   refund: (paymentId: string, reason: string, amount?: number) =>

@@ -16,6 +16,7 @@ import { AnimatedCar, BaseMap, DemandHeat, DispatchLines, Fleet, GridOverlay, Ma
 import { TRAFFIC_COLORS } from '../../map/traffic';
 import { useRealistic } from '../../map/useRealistic';
 import { cityView } from './city';
+import { Alerts, FindVehicle } from './OpsTools';
 import { RideAlong } from './RideAlong';
 
 /** a driver's ride while it is theirs: on the way, waiting at the pickup, or under way */
@@ -47,6 +48,7 @@ export function AdminDashboard() {
   const stats = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => adminApi.stats(24), refetchInterval: 10_000 });
 
   const city = useMemo(() => cityView(drivers.data ?? [], inFlight.data?.items ?? []), [drivers.data, inFlight.data]);
+  const liveIds = useMemo(() => new Set(city.fleet.map((c) => c.id)), [city.fleet]);
 
   // ride along with one vehicle: click it on the map; in realistic mode the chase camera rides behind it
   const [picked, setRiding] = useState<string | null>(null);
@@ -170,6 +172,8 @@ export function AdminDashboard() {
             {tab === 'overview' && (
               <>
                 <ErrorNote>{(stats.error || drivers.error) && errorMessage(stats.error ?? drivers.error)}</ErrorNote>
+                <Alerts rides={inFlight.data?.items ?? []} onRideAlong={setRiding} />
+                <FindVehicle live={liveIds} onRideAlong={setRiding} />
                 <section aria-label="Right now" className="grid grid-cols-2 gap-2">
                   <Kpi label="Free drivers" value={`${city.counts.free}`} note="cruising, waiting for a request" />
                   <Kpi label="To pickups" value={`${city.counts.toPickup}`} note="driving to their rider" />
@@ -193,7 +197,7 @@ export function AdminDashboard() {
                 </p>
           </>
         )}
-        {tab === 'rides' && <LiveRides active={inFlight} />}
+        {tab === 'rides' && <LiveRides active={inFlight} onRideAlong={setRiding} />}
         {tab === 'payments' && <Payments />}
           </>
         )}
@@ -253,7 +257,7 @@ function Kpi({ label, value, note }: { label: string; value: string; note?: stri
 }
 
 /** Rides in flight (watch any of them live), then the latest ones. */
-function LiveRides({ active }: { active: UseQueryResult<Page<Ride>> }) {
+function LiveRides({ active, onRideAlong }: { active: UseQueryResult<Page<Ride>>; onRideAlong: (driverId: string) => void }) {
   const recent = useQuery({ queryKey: ['admin', 'rides', 'recent'], queryFn: () => ridesApi.all(0, 10, false), refetchInterval: 15_000 });
   const finished = (recent.data?.items ?? []).filter((r) => !['REQUESTED', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'].includes(r.status));
   return (
@@ -262,7 +266,9 @@ function LiveRides({ active }: { active: UseQueryResult<Page<Ride>> }) {
         <Eyebrow>In flight · {active.data?.total ?? '–'}</Eyebrow>
         <ErrorNote>{active.error && errorMessage(active.error)}</ErrorNote>
         {active.data?.items.length === 0 && <p className="text-sm text-slate">No rides in flight right now.</p>}
-        {active.data?.items.map((r) => <RideRow key={r.id} ride={r} />)}
+        {active.data?.items.map((r) => (
+          <RideRow key={r.id} ride={r} onRideAlong={r.driverId && RIDING.includes(r.status) ? () => onRideAlong(r.driverId!) : undefined} />
+        ))}
       </div>
       {finished.length > 0 && (
         <div className="space-y-2">
@@ -276,25 +282,33 @@ function LiveRides({ active }: { active: UseQueryResult<Page<Ride>> }) {
   );
 }
 
-function RideRow({ ride }: { ride: Ride }) {
+/** `onRideAlong`: a ride with its driver on the way or driving: follow that vehicle on the map. */
+function RideRow({ ride, onRideAlong }: { ride: Ride; onRideAlong?: () => void }) {
   return (
-    <Link to={`/trips/${ride.id}`} className="flex items-center gap-3 rounded-xl bg-chalk p-3 text-sm transition-colors hover:bg-mist">
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-bold">
-          {shortAddress(ride.pickup.address)} → {shortAddress(ride.drop.address)}
-        </p>
-        <p className="flex items-center gap-1.5 text-xs text-slate">
-          <RideStatusChip status={ride.status} />
-          {ride.simulated && (
-            <span className="rounded bg-mist px-1 font-mono text-[10px] font-bold text-ink" title="Booked by an automated rider of the living city">
-              NPC
-            </span>
-          )}
-          {rideTypeLabel[ride.rideType]} · {clock(ride.requestedAt)} · {inr(ride.finalFare ?? ride.estFare)}
-        </p>
-      </div>
-      <ChevronRight className="size-4 shrink-0 text-slate" aria-hidden />
-    </Link>
+    <div className="flex items-center gap-2 rounded-xl bg-chalk text-sm transition-colors hover:bg-mist">
+      <Link to={`/trips/${ride.id}`} className="flex min-w-0 flex-1 items-center gap-3 p-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-bold">
+            {shortAddress(ride.pickup.address)} → {shortAddress(ride.drop.address)}
+          </p>
+          <p className="flex items-center gap-1.5 text-xs text-slate">
+            <RideStatusChip status={ride.status} />
+            {ride.simulated && (
+              <span className="rounded bg-mist px-1 font-mono text-[10px] font-bold text-ink" title="Booked by an automated rider of the living city">
+                NPC
+              </span>
+            )}
+            {rideTypeLabel[ride.rideType]} · {clock(ride.requestedAt)} · {inr(ride.finalFare ?? ride.estFare)}
+          </p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-slate" aria-hidden />
+      </Link>
+      {onRideAlong && (
+        <button type="button" onClick={onRideAlong} className="mr-3 shrink-0 rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-chalk hover:bg-ink-2">
+          Ride along
+        </button>
+      )}
+    </div>
   );
 }
 
