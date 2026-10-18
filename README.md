@@ -83,16 +83,11 @@ flowchart LR
     redis[("Redis<br/>GEO index · presence · pub/sub")]
     rzp["Razorpay<br/>test mode"]
 
-    web -- "REST /api" --> ride & driver & payment
-    web <-- "WebSocket /ws" --> tracking
-    sim -- "REST + WebSocket" --> services
-
-    ride & driver & payment -- "outbox" --> kafka
-    tracking -- "driver locations" --> kafka
-    kafka --> ride & driver & tracking & payment
-
-    ride & driver & tracking & payment --> pg
-    driver & tracking --> redis
+    web -- "REST /api · WebSocket /ws" --> services
+    sim -- "REST · WebSocket" --> services
+    services <-- "events (outbox, idempotent consumers)" --> kafka
+    services --> pg
+    services --> redis
     payment --> rzp
 ```
 
