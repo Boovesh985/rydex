@@ -87,8 +87,10 @@
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
                     <configuration>
-                        <!-- same Windows loopback-socket workaround for `mvnw spring-boot:run` -->
-                        <jvmArguments>-Djdk.net.unixdomain.tmpdir=${project.build.directory}</jvmArguments>
+                        <!-- same Windows loopback-socket workaround for `mvnw spring-boot:run`; and a small
+                             footprint, so four services, Docker and a browser fit an 8 GB laptop (local runs
+                             only: tests and images set their own) -->
+                        <jvmArguments>-Djdk.net.unixdomain.tmpdir=${project.build.directory} -Xms64m -Xmx320m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=64m -XX:MaxMetaspaceSize=192m</jvmArguments>
                     </configuration>
                 </plugin>
             </plugins>

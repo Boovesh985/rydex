@@ -63,7 +63,8 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
-      KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
+      # one broker with a city's worth of events: 512 MB is plenty (it had a fixed 1 GB)
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms256m
       # one combined broker+controller on a busy laptop: a late heartbeat must not fence the broker
       # (it then reloads every partition, burns CPU and misses the next one: NOT_COORDINATOR storms)
       KAFKA_BROKER_SESSION_TIMEOUT_MS: 30000
@@ -74,9 +75,10 @@ services:
       - kafkadata:/var/lib/kafka/data
     healthcheck:
       <<: *hc
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 > /dev/null 2>&1"]
+      # the CLI is a JVM of its own and would inherit the broker's heap settings every 10 s
+      test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx64m /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 > /dev/null 2>&1"]
       start_period: 30s
-    mem_limit: 1536m
+    mem_limit: 1g
 
   kafka-init:
     image: apache/kafka:4.3.1
