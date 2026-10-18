@@ -15,6 +15,8 @@ import { AnimatedCar, BaseMap, DropPin, FitTo, Fleet, PickupPin, RouteLine } fro
 import { useFollowedRoute, type Leg } from '../../map/useFollowedRoute';
 import { useRealistic } from '../../map/useRealistic';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
+import { OtherRides } from './OtherRides';
+import { retryState } from './retryTrip';
 import { useNearbyCars } from './useNearbyCars';
 
 const TRACKED = ['DRIVER_ASSIGNED', 'DRIVER_ARRIVED', 'IN_PROGRESS'];
@@ -218,8 +220,11 @@ function RideSheet({ ride, location, driver, progress }: { ride: Ride; location:
 
       {ACTIVE_STATUSES.includes(s) && s !== 'IN_PROGRESS' && <CancelRide ride={ride} />}
 
+      {s === 'NO_DRIVER_FOUND' && <OtherRides ride={ride} onBooked={(booked) => navigate(`/ride/${booked.id}`)} />}
+
+      {/* trying again starts from the same trip: pickup, drop and ride type filled in */}
       {(s === 'COMPLETED' || s === 'CANCELLED' || s === 'NO_DRIVER_FOUND') && (
-        <Button block variant={s === 'NO_DRIVER_FOUND' ? 'primary' : 'dark'} onClick={() => navigate('/ride')}>
+        <Button block variant={s === 'NO_DRIVER_FOUND' ? 'primary' : 'dark'} onClick={() => navigate('/ride', s === 'NO_DRIVER_FOUND' ? { state: retryState(ride) } : undefined)}>
           {s === 'NO_DRIVER_FOUND' ? 'Try again' : 'Book another ride'}
         </Button>
       )}

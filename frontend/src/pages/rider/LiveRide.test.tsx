@@ -1,14 +1,16 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { driversApi, paymentsApi, placesApi, ridesApi, trackingApi } from '../../api/endpoints';
 import { ApiError } from '../../api/http';
 import type { LiveLocation, Payment } from '../../api/types';
-import { renderWithProviders, ride } from '../../test/fixtures';
+import { CENTRAL, estimate, MARINA, renderWithProviders, ride } from '../../test/fixtures';
 import { LiveRide } from './LiveRide';
 
 vi.mock('../../api/endpoints', () => ({
-  ridesApi: { get: vi.fn(), cancel: vi.fn() },
+  ridesApi: { get: vi.fn(), cancel: vi.fn(), estimate: vi.fn(), book: vi.fn() },
   trackingApi: { location: vi.fn() },
   driversApi: { forRide: vi.fn(), nearby: vi.fn().mockResolvedValue([]) },
   placesApi: { route: vi.fn() },
@@ -176,5 +178,57 @@ describe('LiveRide', () => {
     show();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This ride does not exist or is not yours.');
+  });
+});
+
+describe('LiveRide when no driver was found', () => {
+  const unmatched = ride({ rideType: 'COMFORT', status: 'NO_DRIVER_FOUND' });
+
+  /** the ride screen, and the booking screen showing the trip it was handed */
+  function showWithBooking() {
+    function Booking() {
+      return <p>booking {JSON.stringify(useLocation().state)}</p>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/ride/ride-1']}>
+          <Routes>
+            <Route path="/ride/:rideId" element={<LiveRide />} />
+            <Route path="/ride" element={<Booking />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.mocked(ridesApi.get).mockImplementation(async (id) => (id === 'ride-1' ? unmatched : ride({ id, rideType: 'BIKE' })));
+    vi.mocked(ridesApi.estimate).mockResolvedValue(estimate);
+  });
+
+  it('offers the ride types with a driver nearby now, quickest first, and books one in a tap', async () => {
+    vi.mocked(ridesApi.book).mockResolvedValue(ride({ id: 'ride-2', rideType: 'BIKE' }));
+    showWithBooking();
+    const user = userEvent.setup();
+
+    const nearby = await screen.findByRole('region', { name: 'Rides nearby now' });
+    // the fixture: bike 2 min, economy 3 min, comfort 5 min; auto and XL have nobody nearby
+    expect(within(nearby).getAllByRole('button').map((b) => b.textContent)).toEqual(['Book Bike', 'Book Economy', 'Book Comfort']);
+    expect(within(nearby).getByText(/5 min away · a car came free/)).toBeInTheDocument();
+    expect(ridesApi.estimate).toHaveBeenCalledWith(CENTRAL, MARINA);
+
+    await user.click(within(nearby).getByRole('button', { name: 'Book Bike' }));
+    expect(ridesApi.book).toHaveBeenCalledWith(CENTRAL, MARINA, 'BIKE', expect.any(String));
+    await waitFor(() => expect(ridesApi.get).toHaveBeenCalledWith('ride-2'));
+  });
+
+  it('tries again from the same trip', async () => {
+    showWithBooking();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    expect(screen.getByText(/^booking /).textContent).toBe(`booking ${JSON.stringify({ retry: { pickup: CENTRAL, drop: MARINA, rideType: 'COMFORT' } })}`);
   });
 });

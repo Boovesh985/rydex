@@ -23,11 +23,13 @@ interface Props {
   onFocusField: (f: Field) => void;
   onEstimate: (e: Estimate | null) => void;
   onBooked: (ride: Ride) => void;
+  /** the ride type picked at first (Try again: the one that found no driver) */
+  initialType?: RideType;
 }
 
 /** Where to, which car, what it costs, book. */
-export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusField, onEstimate, onBooked }: Props) {
-  const [selected, setSelected] = useState<RideType>('ECONOMY');
+export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusField, onEstimate, onBooked, initialType = 'ECONOMY' }: Props) {
+  const [selected, setSelected] = useState<RideType>(initialType);
   // one key per booking attempt: a retry after a network error cannot book twice
   const idempotencyKey = useRef(crypto.randomUUID());
 

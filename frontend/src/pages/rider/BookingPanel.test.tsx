@@ -42,6 +42,13 @@ describe('BookingPanel', () => {
     expect(ridesApi.estimate).toHaveBeenCalledWith(CENTRAL, MARINA);
   });
 
+  it('starts on the ride type it is handed (trying again after no driver was found)', async () => {
+    setup({ initialType: 'COMFORT' });
+
+    expect(await screen.findByRole('radio', { name: /Comfort/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: 'Book Comfort' })).toBeEnabled();
+  });
+
   it('books the chosen ride type with an idempotency key', async () => {
     const booked = ride({ rideType: 'COMFORT' });
     vi.mocked(ridesApi.book).mockResolvedValue(booked);
@@ -96,5 +103,27 @@ describe('BookingPanel', () => {
 
     expect(onDrop).toHaveBeenCalledWith({ lat: 12.84, lng: 80.23, address: 'Marina Mall, OMR, Chennai' });
     expect(ridesApi.estimate).not.toHaveBeenCalled();
+  });
+});
+
+describe('retryFrom', () => {
+  it('reads the trip a Try again hands over, and ignores anything else', async () => {
+    const { retryFrom, retryState } = await import('./retryTrip');
+    const trip = retryState(ride({ rideType: 'AUTO' }));
+
+    expect(retryFrom(trip)).toEqual({ pickup: CENTRAL, drop: MARINA, rideType: 'AUTO' });
+    expect(retryFrom(null)).toBeNull();
+    expect(retryFrom({ retry: { pickup: CENTRAL } })).toBeNull();
+    expect(retryFrom({ from: '/history' })).toBeNull();
+  });
+});
+
+describe('retryState', () => {
+  it('names a point booked without an address as a pin', async () => {
+    const { retryState } = await import('./retryTrip');
+    const { retry } = retryState(ride({ pickup: { lat: 12.9165, lng: 79.1325, address: null } }));
+
+    expect(retry.pickup).toEqual({ lat: 12.9165, lng: 79.1325, address: 'Pinned location' });
+    expect(retry.drop).toEqual(MARINA);
   });
 });

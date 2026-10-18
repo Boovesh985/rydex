@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { Navigate, useLocation, useNavigate } from 'react-router';
 import { placesApi, ridesApi } from '../../api/endpoints';
 import { ACTIVE_STATUSES, type Estimate, type GeoPoint } from '../../api/types';
 import { RealisticBar, RealisticButton } from '../../components/Realistic';
@@ -10,6 +10,7 @@ import type { LatLng } from '../../lib/geo';
 import { BaseMap, DropPin, FitTo, Fleet, MapClicks, PickupPin, RouteLine } from '../../map/MapView';
 import { useRealistic } from '../../map/useRealistic';
 import { BookingPanel, type Field } from './BookingPanel';
+import { retryFrom } from './retryTrip';
 import { useNearbyCars } from './useNearbyCars';
 
 /** Where the rider is: the browser's position if they allow it, else Chennai Central. */
@@ -40,8 +41,11 @@ function useStartPoint(onFound: (p: GeoPoint) => void) {
 
 export function RiderHome() {
   const navigate = useNavigate();
-  const [pickup, setPickup] = useState<GeoPoint | null>(null);
-  const [drop, setDrop] = useState<GeoPoint | null>(null);
+  // "Try again" after no driver was found: the same trip, ready to book
+  const location = useLocation();
+  const [retry] = useState(() => retryFrom(location.state));
+  const [pickup, setPickup] = useState<GeoPoint | null>(retry?.pickup ?? null);
+  const [drop, setDrop] = useState<GeoPoint | null>(retry?.drop ?? null);
   const [field, setField] = useState<Field>('drop');
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const rx = useRealistic(true);
@@ -105,6 +109,7 @@ export function RiderHome() {
           onFocusField={setField}
           onEstimate={setEstimate}
           onBooked={(ride) => navigate(`/ride/${ride.id}`)}
+          initialType={retry?.rideType}
         />
       </Sheet>
     </>
