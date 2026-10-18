@@ -13,6 +13,7 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 
 ## Working rules
 - Work phase by phase (master prompt §17). After each phase: run the tests, summarise, list manual checks, then **stop and wait for "continue"**.
+- Also after each phase, refresh the GitHub page: README (roadmap tick, features, status note, diagram/stack if a component was added, screenshots if the UI changed), `docs/GUIDE.md`, and the repo's About description (`gh repo edit --description`, ≤ 350 chars: built vs in progress) and topics (≤ 20).
 - Free tier only. Official, multi-arch images only (no Bitnami). Record decisions in `docs/adr/`.
 - Conventional commits.
 
