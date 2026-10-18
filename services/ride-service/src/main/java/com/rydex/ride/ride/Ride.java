@@ -115,6 +115,16 @@ public class Ride {
     @Column(name = "refunded_amount")
     private BigDecimal refundedAmount;
 
+    /** The rider's stars for the completed trip (1-5), once; null until they rate it. */
+    @Column(name = "rider_rating")
+    private Integer riderRating;
+
+    @Column(name = "rider_comment")
+    private String riderComment;
+
+    @Column(name = "rated_at")
+    private Instant ratedAt;
+
     /** Booked by an automated (NPC) rider (ADR 0016). */
     @Column(nullable = false)
     private boolean simulated;
@@ -174,6 +184,27 @@ public class Ride {
 
     public void cancel(String by, String reason, Instant now) {
         cancel(by, reason, null, now);
+    }
+
+    /** The rider rates the trip: only once it is completed, and only once. */
+    public void rate(int stars, String comment, Instant now) {
+        if (status != RideStatus.COMPLETED) {
+            throw new IllegalStateException("Only a completed trip can be rated");
+        }
+        if (riderRating != null) {
+            throw new IllegalStateException("This trip is already rated");
+        }
+        this.riderRating = stars;
+        this.riderComment = comment;
+        this.ratedAt = now;
+    }
+
+    public Integer getRiderRating() {
+        return riderRating;
+    }
+
+    public String getRiderComment() {
+        return riderComment;
     }
 
     /** {@code fee}: what the rider pays for cancelling late, or null. */

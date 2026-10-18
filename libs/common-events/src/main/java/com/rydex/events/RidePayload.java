@@ -14,6 +14,7 @@ import java.util.UUID;
  *                        (after the driver arrived); null when the cancellation is free
  * @param simulated       booked by an automated (NPC) rider of the living city (ADR 0016): paid
  *                        through the mock provider; null (older events) means false
+ * @param rating          RIDE_RATED only: the rider's stars for the trip, 1 to 5
  */
 public record RidePayload(
         UUID riderId,
@@ -26,7 +27,16 @@ public record RidePayload(
         Integer estDurationS,
         String reason,
         BigDecimal cancellationFee,
-        Boolean simulated) {
+        Boolean simulated,
+        Integer rating) {
+
+    /** Every event but a rating. */
+    public RidePayload(UUID riderId, UUID driverId, RideType rideType, GeoPoint pickup, GeoPoint drop, BigDecimal fare,
+                       Integer estDistanceM, Integer estDurationS, String reason, BigDecimal cancellationFee,
+                       Boolean simulated) {
+        this(riderId, driverId, rideType, pickup, drop, fare, estDistanceM, estDurationS, reason, cancellationFee,
+                simulated, null);
+    }
 
     /** Every event but a charged cancellation, for a real rider. */
     public RidePayload(UUID riderId, UUID driverId, RideType rideType, GeoPoint pickup, GeoPoint drop, BigDecimal fare,

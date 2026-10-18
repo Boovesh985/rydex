@@ -113,7 +113,7 @@ public class RideService {
         List<StatusChangeView> timeline = history.findByRideIdOrderByAtAscIdAsc(rideId).stream()
                 .map(h -> new StatusChangeView(h.getFromStatus(), h.getToStatus(), h.getAt()))
                 .toList();
-        return RideView.of(ride, otpFor(caller, ride), timeline);
+        return RideView.of(ride, otpFor(caller, ride), timeline, !caller.is(Role.DRIVER));
     }
 
     @Transactional(readOnly = true)
@@ -126,7 +126,7 @@ public class RideService {
                     : active ? rides.findByStatusInOrderByRequestedAtDesc(IN_FLIGHT, pageable)
                     : rides.findAllByOrderByRequestedAtDesc(pageable);
         };
-        return new PageView<>(result.map(r -> RideView.of(r, otpFor(caller, r), null)).getContent(),
+        return new PageView<>(result.map(r -> RideView.of(r, otpFor(caller, r), null, !caller.is(Role.DRIVER))).getContent(),
                 page, size, result.getTotalElements());
     }
 
@@ -239,6 +239,29 @@ public class RideService {
         record(ride, RideStatus.REQUESTED, SYSTEM_ACTOR, now);
         publish(EventType.RIDE_CANCELLED, ride, ride.getCancelReason());
         return true;
+    }
+
+    /**
+     * The rider rates their completed trip, once: 1 to 5 stars and an optional comment. RIDE_RATED
+     * carries the stars to driver-service, which folds them into the driver's rating.
+     */
+    @Transactional
+    public RideView rate(AuthUser rider, UUID rideId, int stars, String comment) {
+        requireRole(rider, Role.RIDER);
+        Ride ride = load(rideId);
+        if (!rider.id().equals(ride.getRiderId())) {
+            throw ApiException.notFound("Ride");
+        }
+        try {
+            ride.rate(stars, comment == null || comment.isBlank() ? null : comment.trim(), clock.instant());
+        } catch (IllegalStateException e) {
+            throw ApiException.conflict(e.getMessage());
+        }
+        var payload = new RidePayload(ride.getRiderId(), ride.getDriverId(), ride.getRideType(), ride.pickup(),
+                ride.drop(), ride.getFinalFare(), ride.getEstDistanceM(), ride.getEstDurationS(), null, null,
+                ride.isSimulated(), stars);
+        outbox.append(EventEnvelope.of(EventType.RIDE_RATED, ride.getId().toString(), payload, clock));
+        return RideView.of(ride, null, null);
     }
 
     /**

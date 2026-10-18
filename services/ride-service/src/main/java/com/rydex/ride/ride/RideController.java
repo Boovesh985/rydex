@@ -5,6 +5,7 @@ import com.rydex.ride.ride.RideDtos.CancelRequest;
 import com.rydex.ride.ride.RideDtos.EstimateRequest;
 import com.rydex.ride.ride.RideDtos.EstimateResponse;
 import com.rydex.ride.ride.RideDtos.PageView;
+import com.rydex.ride.ride.RideDtos.RateRequest;
 import com.rydex.ride.ride.RideDtos.RideView;
 import com.rydex.ride.ride.RideDtos.StartRideRequest;
 import com.rydex.ride.security.AuthUser;
@@ -105,6 +106,13 @@ class RideController {
     RideView cancel(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                     @Valid @RequestBody(required = false) CancelRequest req) {
         return rides.cancel(AuthUser.from(jwt), id, req == null ? null : req.reason());
+    }
+
+    @PostMapping("/{id}/rating")
+    @PreAuthorize("hasRole('RIDER')")
+    @Operation(summary = "Rate your completed trip, once: 1 to 5 stars and an optional comment")
+    RideView rate(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @Valid @RequestBody RateRequest req) {
+        return rides.rate(AuthUser.from(jwt), id, req.stars(), req.comment());
     }
 
     @PostMapping("/{id}/arrived")

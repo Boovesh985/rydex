@@ -9,6 +9,8 @@ public enum EventType {
     RIDE_STARTED(Topics.RIDE_EVENTS),
     RIDE_COMPLETED(Topics.RIDE_EVENTS),
     RIDE_CANCELLED(Topics.RIDE_EVENTS),
+    /** the rider rated a completed trip (1-5 stars): driver-service updates the driver's rating */
+    RIDE_RATED(Topics.RIDE_EVENTS),
     PAYMENT_INITIATED(Topics.PAYMENT_EVENTS),
     PAYMENT_SUCCEEDED(Topics.PAYMENT_EVENTS),
     PAYMENT_FAILED(Topics.PAYMENT_EVENTS),

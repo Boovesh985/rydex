@@ -70,6 +70,29 @@ class DriverEventFlowTests extends IntegrationTest {
     }
 
     @Test
+    void aRidersStarsMoveTheDriversRatingOnceEach() {
+        TestDriver d = newDriver(RideType.COMFORT); // a new driver: 5.00 from no ratings yet
+        UUID rideId = UUID.randomUUID();
+        var payload = new RidePayload(UUID.randomUUID(), d.id(), RideType.COMFORT, CENTER, AIRPORT,
+                new BigDecimal("339.00"), 22111, 1359, null, null, false, 2);
+        var rated = EventEnvelope.of(EventType.RIDE_RATED, rideId.toString(), payload);
+
+        publish(rated);
+        publish(rated); // redelivered: counted once
+
+        // a new driver's 5.00 counts as 5 trips: (5 x 5 + 2) / 6 = 4.50
+        await().atMost(KAFKA_WAIT).untilAsserted(() -> assertThat(rating(d)).isEqualByComparingTo("4.50"));
+        await().pollDelay(Duration.ofSeconds(1)).atMost(KAFKA_WAIT).untilAsserted(() ->
+                assertThat(jdbc.sql("SELECT rating_count FROM drivers WHERE user_id = :id").param("id", d.id())
+                        .query(Integer.class).single()).isEqualTo(1));
+        assertThat(rating(d)).isEqualByComparingTo("4.50");
+    }
+
+    private BigDecimal rating(TestDriver d) {
+        return jdbc.sql("SELECT rating FROM drivers WHERE user_id = :id").param("id", d.id()).query(BigDecimal.class).single();
+    }
+
+    @Test
     void nobodyNearbyEndsWithNoDriverFoundOnKafka() {
         UUID rideId = UUID.randomUUID();
 

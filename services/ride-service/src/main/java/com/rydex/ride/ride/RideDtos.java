@@ -6,6 +6,8 @@ import com.rydex.events.PaymentPayload;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -103,15 +105,27 @@ public final class RideDtos {
             PaymentPayload.Status paymentStatus,
             BigDecimal refundedAmount,
             List<StatusChangeView> timeline,
-            boolean simulated) {
+            boolean simulated,
+            Integer riderRating,
+            String riderComment) {
 
         static RideView of(Ride r, String otp, List<StatusChangeView> timeline) {
+            return of(r, otp, timeline, true);
+        }
+
+        /** {@code withRating}: false for the driver, who is not shown how each rider rated them. */
+        static RideView of(Ride r, String otp, List<StatusChangeView> timeline, boolean withRating) {
             return new RideView(r.getId(), r.getStatus(), r.getRideType(), r.getRiderId(), r.getDriverId(),
                     r.pickup(), r.drop(), r.getEstFare(), r.getFinalFare(), r.getEstDistanceM(), r.getEstDurationS(),
                     r.getSurgeMultiplier(), otp, r.getRequestedAt(), r.getAssignedAt(), r.getArrivedAt(),
                     r.getStartedAt(), r.getCompletedAt(), r.getCancelledAt(), r.getCancelReason(), r.getCancelledBy(),
-                    r.getCancellationFee(), r.getPaymentStatus(), r.getRefundedAmount(), timeline, r.isSimulated());
+                    r.getCancellationFee(), r.getPaymentStatus(), r.getRefundedAmount(), timeline, r.isSimulated(),
+                    withRating ? r.getRiderRating() : null, withRating ? r.getRiderComment() : null);
         }
+    }
+
+    /** The rider's rating of a completed trip. */
+    public record RateRequest(@NotNull @Min(1) @Max(5) Integer stars, @Size(max = 280) String comment) {
     }
 
     public record PageView<T>(List<T> items, int page, int size, long total) {

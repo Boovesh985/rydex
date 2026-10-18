@@ -23,6 +23,8 @@ log = logging.getLogger("rydex.sim")
 POLL_S = 4.0  # how often a rider looks at their ride
 ACTIVE = ("REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ARRIVED", "IN_PROGRESS")
 # share of trips per ride type
+# how NPC riders rate their trips: mostly happy, now and then not
+STARS = ((5, 0.68), (4, 0.2), (3, 0.08), (2, 0.03), (1, 0.01))
 RIDE_TYPES = (("BIKE", 0.3), ("AUTO", 0.25), ("ECONOMY", 0.22), ("COMFORT", 0.12), ("XL", 0.07), ("PREMIUM", 0.04))
 
 
@@ -142,6 +144,14 @@ class SimRider:
             self.pos = drop
             self.place = to.name
 
+    async def _rate(self, ride: dict[str, Any]) -> None:
+        """Rates the trip, as most riders do: the stars move the driver's rating."""
+        if ride.get("riderRating") is not None:
+            return
+        stars = self.rng.choices([s for s, _ in STARS], [w for _, w in STARS])[0]
+        with contextlib.suppress(ApiError):
+            await self.session.call("POST", f"/api/rides/{ride['id']}/rating", {"stars": stars})
+
     async def _follow(self, ride: dict[str, Any]) -> dict[str, Any] | None:
         """Watches the ride to its end: gives up on a slow match, reads out the PIN when the car is here."""
         ride_id = ride["id"]
@@ -164,6 +174,7 @@ class SimRider:
                     self.stats.completed += 1
                     self.stats.spent += float(ride.get("finalFare") or ride.get("estFare") or 0)
                     log.info("%s arrived at %s", self.label, ride["drop"].get("address"))
+                    await self._rate(ride)
                     return ride
                 if status == "CANCELLED":
                     self.stats.cancelled += 1

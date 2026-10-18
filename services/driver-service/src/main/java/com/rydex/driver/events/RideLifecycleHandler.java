@@ -1,10 +1,12 @@
 package com.rydex.driver.events;
 
+import com.rydex.driver.driver.DriverRepository;
 import com.rydex.driver.matching.MatchingService;
 import com.rydex.events.EventEnvelope;
 import com.rydex.events.RidePayload;
 import com.rydex.messaging.NonRetryableEventException;
 import com.rydex.messaging.ProcessedEvents;
+import java.time.Clock;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -13,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Feeds ride-service's lifecycle events into matching, exactly once per event:
  * RIDE_REQUESTED starts matching, RIDE_CANCELLED stops it (or frees the assigned driver),
- * RIDE_COMPLETED frees the driver.
+ * RIDE_COMPLETED frees the driver, RIDE_RATED folds the rider's stars into the driver's rating.
  */
 @Component
 public class RideLifecycleHandler {
@@ -25,12 +27,16 @@ public class RideLifecycleHandler {
 
     private final ProcessedEvents processed;
     private final MatchingService matching;
+    private final DriverRepository drivers;
+    private final Clock clock;
     private final String consumer;
 
-    RideLifecycleHandler(ProcessedEvents processed, MatchingService matching,
+    RideLifecycleHandler(ProcessedEvents processed, MatchingService matching, DriverRepository drivers, Clock clock,
                          @Value("${spring.kafka.consumer.group-id}") String consumer) {
         this.processed = processed;
         this.matching = matching;
+        this.drivers = drivers;
+        this.clock = clock;
         this.consumer = consumer;
     }
 
@@ -44,9 +50,19 @@ public class RideLifecycleHandler {
             case RIDE_REQUESTED -> matching.onRideRequested(rideId, requireBookable(event), event.occurredAt());
             case RIDE_CANCELLED -> matching.onRideCancelled(rideId);
             case RIDE_COMPLETED -> matching.onRideCompleted(rideId);
+            case RIDE_RATED -> rate(event);
             default -> throw new IllegalArgumentException("not a ride lifecycle event: " + event.eventType());
         }
         return Result.APPLIED;
+    }
+
+    private void rate(EventEnvelope<RidePayload> event) {
+        RidePayload p = event.payload();
+        if (p == null || p.driverId() == null || p.rating() == null || p.rating() < 1 || p.rating() > 5) {
+            throw new NonRetryableEventException("RIDE_RATED without a driver or 1-5 stars: " + event.eventId());
+        }
+        // a driver deleted since: nothing to rate
+        drivers.findById(p.driverId()).ifPresent(d -> d.rate(p.rating(), clock.instant()));
     }
 
     private static RidePayload requireBookable(EventEnvelope<RidePayload> event) {

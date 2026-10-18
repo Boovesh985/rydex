@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -17,6 +18,9 @@ import java.util.UUID;
 @Entity
 @Table(name = "drivers")
 public class Driver {
+
+    /** a new driver's 5.00 counts as this many trips (see {@link #rate}) */
+    static final int RATING_PRIOR = 5;
 
     @Id
     @Column(name = "user_id")
@@ -37,6 +41,10 @@ public class Driver {
 
     @Column(nullable = false, precision = 3, scale = 2)
     private BigDecimal rating;
+
+    /** how many trip ratings {@link #rating} averages */
+    @Column(name = "rating_count", nullable = false)
+    private int ratingCount;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -105,6 +113,22 @@ public class Driver {
         status = DriverStatus.ON_TRIP;
         currentRideId = rideId;
         updatedAt = now;
+    }
+
+    /**
+     * Folds a rider's stars (1-5) into the rating. A new driver's 5.00 counts as {@link #RATING_PRIOR}
+     * trips, so one early bad rating does not sink them; after that it is the plain average.
+     */
+    public void rate(int stars, Instant now) {
+        int weight = Math.max(ratingCount, RATING_PRIOR);
+        this.rating = rating.multiply(BigDecimal.valueOf(weight)).add(BigDecimal.valueOf(stars))
+                .divide(BigDecimal.valueOf(weight + 1L), 2, RoundingMode.HALF_UP);
+        this.ratingCount++;
+        this.updatedAt = now;
+    }
+
+    public int getRatingCount() {
+        return ratingCount;
     }
 
     /** Back to AVAILABLE after the ride ends. Returns false if the driver was not on that ride. */

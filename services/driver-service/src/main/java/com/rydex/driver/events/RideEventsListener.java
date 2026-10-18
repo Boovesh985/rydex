@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 class RideEventsListener {
 
     private static final Set<EventType> HANDLED =
-            EnumSet.of(EventType.RIDE_REQUESTED, EventType.RIDE_CANCELLED, EventType.RIDE_COMPLETED);
+            EnumSet.of(EventType.RIDE_REQUESTED, EventType.RIDE_CANCELLED, EventType.RIDE_COMPLETED, EventType.RIDE_RATED);
 
     private final EventCodec codec;
     private final RideLifecycleHandler handler;

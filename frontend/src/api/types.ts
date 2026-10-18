@@ -114,6 +114,9 @@ export interface Ride {
   timeline: StatusChange[] | null;
   /** booked by an automated (NPC) rider of the living city (ADR 0016) */
   simulated?: boolean;
+  /** the rider's stars for the completed trip (1-5), once; never shown to the driver */
+  riderRating?: number | null;
+  riderComment?: string | null;
 }
 
 /** A free car near a point (its driver is not identified). */

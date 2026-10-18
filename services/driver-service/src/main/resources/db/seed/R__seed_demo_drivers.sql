@@ -17,14 +17,15 @@ SELECT g,
        END AS vehicle_model
 FROM generate_series(1, 50) AS g;
 
-INSERT INTO drivers (user_id, name, vehicle_type, vehicle_number, vehicle_model, rating)
+INSERT INTO drivers (user_id, name, vehicle_type, vehicle_number, vehicle_model, rating, rating_count)
 SELECT user_id,
        'Driver ' || lpad(g::text, 2, '0'),
        vehicle_type,
        'TN ' || lpad((1 + g % 22)::text, 2, '0') || ' '
              || chr(65 + g % 26) || chr(65 + (g * 7) % 26) || ' ' || (1000 + g * 37)::text,
        vehicle_model,
-       4.50 + ((g * 37) % 50) / 100.0
+       4.50 + ((g * 37) % 50) / 100.0,
+       20 -- the seeded rating stands for about 20 earlier trips (V7)
 FROM seed_fleet
 ON CONFLICT DO NOTHING;
 

@@ -136,7 +136,7 @@ class FakeSession:
         self.calls.append((method, path, body))
         if method == "PUT":
             return {"vehicleType": body["vehicleType"], "vehicleNumber": body["vehicleNumber"], "status": "OFFLINE"}
-        return {"status": body["status"]}
+        return {"status": (body or {}).get("status")}
 
 
 def test_an_npc_driver_left_on_an_old_vehicle_takes_its_seeded_one():
@@ -164,3 +164,17 @@ def test_reported_speed_is_the_city_speed_not_the_fast_forward():
     city = 30 / 3.6
     assert world_speed(city * TICK_S, 1.0) == pytest.approx(city)
     assert world_speed(city * TICK_S * 5, 5.0) == pytest.approx(city)
+
+
+def test_npc_riders_rate_their_trips_once():
+    from rydex_sim.rider import PinBoard, RiderSettings, RiderStats, SimRider
+
+    session = FakeSession()
+    rider = SimRider("rider9", session, PinBoard(), RiderSettings(), RiderStats(), random.Random(3))
+
+    asyncio.run(rider._rate({"id": "ride-9", "riderRating": None}))
+    asyncio.run(rider._rate({"id": "ride-8", "riderRating": 5}))  # rated already: left alone
+
+    assert len(session.calls) == 1
+    method, path, body = session.calls[0]
+    assert (method, path) == ("POST", "/api/rides/ride-9/rating") and 1 <= body["stars"] <= 5

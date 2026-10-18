@@ -234,6 +234,12 @@ function Trip({ rideId }: { rideId: string }) {
                 {' · '}
                 {inr(r.finalFare ?? r.estFare)}
               </p>
+              {r.riderRating != null && (
+                <p className="text-slate">
+                  Rider rated it <strong className="text-ink">{r.riderRating}/5</strong>
+                  {r.riderComment && <>: “{r.riderComment}”</>}
+                </p>
+              )}
               {trail.length > 1 && (
                 <p className="flex items-center gap-2 text-xs text-slate">
                   <span className="h-1 w-6 rounded-full bg-auto ring-1 ring-ink" aria-hidden /> Path driven

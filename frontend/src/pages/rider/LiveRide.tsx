@@ -16,6 +16,7 @@ import { useFollowedRoute, type Leg } from '../../map/useFollowedRoute';
 import { useRealistic } from '../../map/useRealistic';
 import { useOnReconnect, useSubscription } from '../../realtime/hooks';
 import { OtherRides } from './OtherRides';
+import { RateTrip } from './RateTrip';
 import { retryState } from './retryTrip';
 import { useNearbyCars } from './useNearbyCars';
 
@@ -215,6 +216,8 @@ function RideSheet({ ride, location, driver, progress }: { ride: Ride; location:
       {driver && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED' || s === 'IN_PROGRESS') && <DriverPanel driver={driver} booked={ride.rideType} />}
 
       <Trip ride={ride} />
+
+      {s === 'COMPLETED' && <RateTrip ride={ride} />}
 
       {(s === 'COMPLETED' || (s === 'CANCELLED' && (ride.cancellationFee ?? 0) > 0)) && <PaymentPanel rideId={ride.id} />}
 

@@ -74,6 +74,7 @@ export const ridesApi = {
   /** Admins: every ride, or only the ones in flight. */
   all: (page = 0, size = 20, active = false) => api<Page<Ride>>(`/api/rides?mine=false&active=${active}&page=${page}&size=${size}`),
   cancel: (id: string, reason?: string) => api<Ride>(`/api/rides/${id}/cancel`, json({ reason })),
+  rate: (id: string, stars: number, comment?: string) => api<Ride>(`/api/rides/${id}/rating`, json({ stars, comment: comment || undefined })),
   arrived: (id: string) => api<Ride>(`/api/rides/${id}/arrived`, { method: 'POST' }),
   start: (id: string, otp: string) => api<Ride>(`/api/rides/${id}/start`, json({ otp })),
   complete: (id: string) => api<Ride>(`/api/rides/${id}/complete`, { method: 'POST' }),
