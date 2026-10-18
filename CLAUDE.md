@@ -19,7 +19,7 @@ The full specification is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md). Rea
 ## Commands
 - Build + tests: `./mvnw -B -ntp verify` (Windows: `.\mvnw.cmd`)
 - Infra: `docker compose -f infra/docker-compose.yml up -d` (Postgres+PostGIS :5432, Redis :6379, Kafka :9092 — all on 127.0.0.1)
-- Frontend (`frontend/`): `npm run dev` (:5173, proxies /api + /ws), `npm run lint`, `npm run typecheck`, `npm test`, `npm run e2e` (Playwright, needs the 4 services)
+- Frontend (`frontend/`): `npm run dev` (:5173, proxies /api + /ws), `npm run format` (Prettier, `.prettierrc.json`: 160 columns, single quotes; CI runs `format:check`), `npm run lint`, `npm run typecheck`, `npm test`, `npm run e2e` (Playwright, needs the 4 services)
 - Simulator (`simulator/`): `python simulate.py --city` (the living city: 40 NPC drivers + 30 NPC riders); tests `python -m pytest`
 - Traffic roads (once; output committed): `python infra/scripts/build-traffic-roads.py` (Overpass, tiles cached in `.cache/`)
 
