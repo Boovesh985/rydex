@@ -344,10 +344,28 @@ export function applyLook(map: MlMap, look: Look, previous?: Look) {
   map.getContainer().style.background = look.realistic ? 'transparent' : p.land;
 }
 
-/** Night by the local clock (rough Chennai sunset/sunrise), for the realistic mode's default. */
+/** When the maps' automatic look turns to day (6 am) and to night (6 pm), local time. */
+export const DAY_STARTS = 6;
+export const NIGHT_STARTS = 18;
+
+/** Night by the local clock: 6 pm to 6 am. */
 export function isNightNow(date = new Date()): boolean {
-  const h = date.getHours() + date.getMinutes() / 60;
-  return h >= 18.5 || h < 6;
+  const h = date.getHours();
+  return h >= NIGHT_STARTS || h < DAY_STARTS;
+}
+
+/** The next 6 am or 6 pm after `date`, when the automatic look changes (ms since the epoch). */
+export function nextDayNightSwitch(date = new Date()): number {
+  const next = new Date(date);
+  next.setMinutes(0, 0, 0);
+  const h = date.getHours();
+  if (h < DAY_STARTS) next.setHours(DAY_STARTS);
+  else if (h < NIGHT_STARTS) next.setHours(NIGHT_STARTS);
+  else {
+    next.setDate(next.getDate() + 1);
+    next.setHours(DAY_STARTS);
+  }
+  return next.getTime();
 }
 
 export const ROUTE_COLORS = {

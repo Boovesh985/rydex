@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { isNightNow } from './theme';
+import { isNightNow, nextDayNightSwitch } from './theme';
 
 export type TimeOfDay = 'auto' | 'day' | 'night';
 
@@ -13,12 +13,15 @@ export const CAMERA_VIEW_LABELS: Record<CameraView, string> = { chase: 'Chase', 
 interface MapPrefs {
   /** the simulated traffic layer (ADR 0016) */
   traffic: boolean;
-  /** day and night look of every map; auto follows the clock */
+  /** day and night look of every map: auto is day from 6 am to 6 pm, night from 6 pm to 6 am */
   time: TimeOfDay;
+  /** a day or night picked by hand holds until this moment (the next 6 am or 6 pm), then auto again */
+  timeUntil: number | null;
   /** the follow camera's view */
   camera: CameraView;
   toggleTraffic: () => void;
-  setTime: (time: TimeOfDay) => void;
+  /** day or night by hand, until the clock's next change; picking what the clock shows anyway is auto */
+  setNight: (night: boolean) => void;
   nextCamera: () => void;
 }
 
@@ -28,26 +31,38 @@ export const useMapPrefs = create<MapPrefs>()(
     (set) => ({
       traffic: true,
       time: 'auto',
+      timeUntil: null,
       camera: 'chase',
       toggleTraffic: () => set((s) => ({ traffic: !s.traffic })),
-      setTime: (time) => set({ time }),
+      setNight: (night) => set(night === isNightNow() ? { time: 'auto', timeUntil: null } : { time: night ? 'night' : 'day', timeUntil: nextDayNightSwitch() }),
       nextCamera: () => set((s) => ({ camera: CAMERA_VIEWS[(CAMERA_VIEWS.indexOf(s.camera) + 1) % CAMERA_VIEWS.length] })),
     }),
     { name: 'rydex.map', storage: createJSONStorage(() => localStorage) },
   ),
 );
 
-/** auto -> day -> night -> auto */
-export const nextTime = (t: TimeOfDay): TimeOfDay => (t === 'auto' ? 'day' : t === 'day' ? 'night' : 'auto');
+/**
+ * The look in force at `now`: a hand-picked day or night until its time is up (a choice saved before
+ * choices expired has no end, and counts as up), otherwise auto.
+ */
+export function timeInForce(time: TimeOfDay, until: number | null | undefined, now = Date.now()): TimeOfDay {
+  return time !== 'auto' && until != null && now < until ? time : 'auto';
+}
 
-/** Whether the maps are in their night look now (re-checked every minute in auto). */
-export function useNight(): boolean {
+/** The day/night setting in force, re-checked every minute (the clock moves on, a choice runs out). */
+export function useTimeOfDay(): { time: TimeOfDay; night: boolean } {
   const time = useMapPrefs((s) => s.time);
-  const [clockNight, setClockNight] = useState(isNightNow);
+  const until = useMapPrefs((s) => s.timeUntil);
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (time !== 'auto') return;
-    const timer = setInterval(() => setClockNight(isNightNow()), 60_000);
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
-  }, [time]);
-  return time === 'auto' ? clockNight : time === 'night';
+  }, []);
+  const inForce = timeInForce(time, until, now);
+  return { time: inForce, night: inForce === 'auto' ? isNightNow(new Date(now)) : inForce === 'night' };
+}
+
+/** Whether the maps are in their night look now. */
+export function useNight(): boolean {
+  return useTimeOfDay().night;
 }

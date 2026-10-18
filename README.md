@@ -81,7 +81,7 @@ Moving the camera:
 
 Every map has two switches by its zoom buttons:
 - **traffic:** Google-style green, orange, red and dark red on the main roads. It is simulated, and the automated cars slow down in it.
-- **day/night/auto:** the night city has glowing street lights and headlights.
+- **day and night:** day from 6 am to 6 pm and night from 6 pm to 6 am by the clock; the switch on every map flips it by hand until the next 6 o'clock. The night city has glowing street lights and headlights.
 
 Maps are MapLibre vector maps on free OpenFreeMap tiles. The 3D vehicles and scenery are drawn with three.js (ADR 15, ADR 16, ADR 17, ADR 18).
 

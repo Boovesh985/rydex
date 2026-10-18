@@ -75,7 +75,7 @@ The user tests every pairing by hand: an NPC rider with them driving, an NPC dri
   - 22 clouds drifting with the wind.
   The 3D light comes from the same sun position, so buildings are lit from the right side.
 - **Camera:** realistic mode tilts further (66°, the chase camera 74°; MapLibre's limit is raised to 80°), so the sky is in view the way it is in a driving game.
-- **Day and night:** auto by the clock, or forced, from one switch on every map, for 2D and 3D alike.
+- **Day and night:** by the clock (day 6 am to 6 pm, night 6 pm to 6 am), for 2D and 3D alike. One switch on every map flips it by hand; the choice holds until the clock's next change (6 am or 6 pm), so the clock always takes over again. (Before 2026-10-18 the switch cycled auto, always day and always night, and a forced look stuck for good.)
 
 ### The admin map
 The admin map joins driver-service's live drivers with ride-service's rides in flight (`pages/admin/city.ts`) to show:

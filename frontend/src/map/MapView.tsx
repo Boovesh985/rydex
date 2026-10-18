@@ -902,6 +902,7 @@ export function GridOverlay({ cells }: { cells: GridCellShape[] }) {
 // ------------------------------------------------------------------ the living city (admin)
 
 export type RiderState = 'searching' | 'waiting' | 'boarding';
+const RIDER_STATES: RiderState[] = ['searching', 'waiting', 'boarding'];
 
 export interface WaitingRider {
   /** the ride */
@@ -945,6 +946,7 @@ export function RiderMarkers({ riders, onSelect }: { riders: WaitingRider[]; onS
       if (!entry) {
         const el = document.createElement('button');
         el.type = 'button';
+        el.className = 'rx-rider';
         el.innerHTML = RIDER_GLYPH;
         el.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -953,7 +955,9 @@ export function RiderMarkers({ riders, onSelect }: { riders: WaitingRider[]; onS
         entry = { marker: new maplibregl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map), el };
         markers.current.set(r.id, entry);
       }
-      entry.el.className = `rx-rider rx-rider-${r.state}`;
+      // toggle the state classes only: replacing className would strip MapLibre's own marker classes
+      // (position: absolute), and every marker would fall into a column down the page
+      for (const state of RIDER_STATES) entry.el.classList.toggle(`rx-rider-${state}`, r.state === state);
       entry.el.setAttribute('aria-label', r.label);
       entry.el.title = r.label;
       entry.marker.setLngLat([r.lng, r.lat]);
