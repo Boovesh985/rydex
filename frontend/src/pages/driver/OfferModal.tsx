@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { Offer } from '../../api/types';
+import type { Offer, RideType } from '../../api/types';
 import { Button, ErrorNote } from '../../components/ui';
 import { distance, inr, minutes, rideTypeLabel, shortAddress } from '../../lib/format';
 
 interface Props {
   offer: Offer;
+  /** the driver's own vehicle class: a different one means they are the free upgrade (ADR 0021) */
+  vehicle?: RideType;
   busy: 'accept' | 'reject' | null;
   error: string;
   onAccept: () => void;
@@ -22,7 +24,7 @@ function useSecondsLeft(expiresAt: string) {
 }
 
 /** An incoming ride: 15 seconds to take it. The ring drains as the time runs out. */
-export function OfferModal({ offer, busy, error, onAccept, onReject }: Props) {
+export function OfferModal({ offer, vehicle, busy, error, onAccept, onReject }: Props) {
   const left = useSecondsLeft(offer.expiresAt);
   const total = Math.max(1, (Date.parse(offer.expiresAt) - Date.parse(offer.offeredAt)) / 1000);
   const r = 26;
@@ -60,6 +62,9 @@ export function OfferModal({ offer, busy, error, onAccept, onReject }: Props) {
             <p className="text-sm text-chalk/75">
               Pickup {distance(offer.distanceToPickupM)} away · {minutes(offer.pickupEtaS)}
             </p>
+            {vehicle && vehicle !== offer.rideType && (
+              <p className="text-sm font-bold text-auto">No {rideTypeLabel[offer.rideType]} nearby: you are the upgrade, at its fare</p>
+            )}
           </div>
           <span className="ml-auto font-mono text-2xl font-bold text-auto tabular">{inr(offer.estFare)}</span>
         </div>

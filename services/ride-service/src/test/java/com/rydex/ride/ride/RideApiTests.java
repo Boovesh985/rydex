@@ -44,7 +44,9 @@ class RideApiTests extends IntegrationTest {
         given(osrm.route(any(), any())).willReturn(List.of(
                 new RouteResult.Alternative(5_000, 900, "encoded_polyline"),
                 new RouteResult.Alternative(5_600, 960, "alt_polyline")));
-        redis.delete(RedisKeys.driversGeo(RideType.ECONOMY));
+        for (RideType type : RideType.values()) {
+            redis.delete(RedisKeys.driversGeo(type));
+        }
     }
 
     @Test
@@ -87,6 +89,26 @@ class RideApiTests extends IntegrationTest {
         JsonNode economy = option(res.getBody(), "ECONOMY");
         assertThat(economy.path("driversNearby").asInt()).isEqualTo(1);
         assertThat(economy.path("etaMinutes").asInt()).isBetween(3, 6);
+    }
+
+    @Test
+    void estimateShowsAFreeUpgradeWhenNoneOfTheBookedClassIsNearby() {
+        String rider = token(api().register("RIDER"));
+        // no hatchback anywhere, a sedan ~1.1 km north of the pickup
+        redis.opsForGeo().add(RedisKeys.driversGeo(RideType.COMFORT), new Point(80.2707, 13.0927),
+                UUID.randomUUID().toString());
+
+        JsonNode body = api().post("/api/rides/estimate", rider, Map.of("pickup", PICKUP, "drop", DROP)).getBody();
+
+        JsonNode economy = option(body, "ECONOMY");
+        assertThat(economy.path("upgradeTo").asString()).isEqualTo("COMFORT");
+        assertThat(economy.path("etaMinutes").asInt()).isBetween(3, 6);
+        assertThat(economy.path("driversNearby").asInt()).isZero();
+        assertThat(economy.path("fare").decimalValue()).isEqualByComparingTo("123"); // still the Economy fare
+        // the sedan is the Comfort option's own; nothing upgrades to XL or between bikes, autos and cabs
+        assertThat(option(body, "COMFORT").path("upgradeTo").isNull()).isTrue();
+        assertThat(option(body, "XL").path("etaMinutes").isNull()).isTrue();
+        assertThat(option(body, "AUTO").path("etaMinutes").isNull()).isTrue();
     }
 
     @Test

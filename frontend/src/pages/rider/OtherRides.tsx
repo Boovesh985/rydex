@@ -55,6 +55,7 @@ export function OtherRides({ ride: r, onBooked }: { ride: Ride; onBooked: (ride:
               <p className="flex items-center gap-1 text-xs text-slate">
                 <Clock3 className="size-3" aria-hidden />
                 {Math.max(1, o.etaMinutes!)} min away{same && ` · a ${vehicleNoun(o.rideType)} came free`}
+                {o.upgradeTo && ` · may come as a ${rideTypeLabel[o.upgradeTo]}`}
               </p>
             </div>
             <Button

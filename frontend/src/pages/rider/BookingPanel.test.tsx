@@ -42,6 +42,17 @@ describe('BookingPanel', () => {
     expect(ridesApi.estimate).toHaveBeenCalledWith(CENTRAL, MARINA);
   });
 
+  it('says when a ride type may come as a better class at its fare', async () => {
+    vi.mocked(ridesApi.estimate).mockResolvedValue({
+      ...estimate,
+      options: estimate.options.map((o) => (o.rideType === 'XL' ? o : o.rideType === 'ECONOMY' ? { ...o, etaMinutes: 4, driversNearby: 0, upgradeTo: 'COMFORT' } : o)),
+    });
+    setup();
+
+    expect(await screen.findByRole('radio', { name: /Economy.*₹124.*4 min away.*May come as a Comfort/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^Comfort/ })).not.toHaveTextContent(/May come as/);
+  });
+
   it('starts on the ride type it is handed (trying again after no driver was found)', async () => {
     setup({ initialType: 'COMFORT' });
 

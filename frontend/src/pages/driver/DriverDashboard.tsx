@@ -303,7 +303,7 @@ function Dashboard({ profile }: { profile: DriverProfile }) {
         </Sheet>
       )}
       {offer && profile.status === 'AVAILABLE' && (
-        <OfferModal offer={offer} busy={offerBusy} error={offerError} onAccept={() => respond(true)} onReject={() => respond(false)} />
+        <OfferModal offer={offer} vehicle={profile.vehicleType} busy={offerBusy} error={offerError} onAccept={() => respond(true)} onReject={() => respond(false)} />
       )}
     </>
   );

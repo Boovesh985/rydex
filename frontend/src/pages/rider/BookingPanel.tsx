@@ -160,6 +160,7 @@ function OptionCard({ option, selected, onSelect }: { option: RideOption; select
           <Clock3 className="size-3" aria-hidden />
           {option.etaMinutes == null ? `No ${vehicleNoun(option.rideType)}s nearby` : `${Math.max(1, option.etaMinutes)} min away`}
         </span>
+        {option.upgradeTo && <span className="block text-xs font-bold text-go">May come as a {rideTypeLabel[option.upgradeTo]}</span>}
       </span>
     </button>
   );

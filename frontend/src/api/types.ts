@@ -52,6 +52,8 @@ export interface RideOption {
   fare: number;
   etaMinutes: number | null;
   driversNearby: number;
+  /** none of its own class is near, but a driver of this better class would take it at this fare (ADR 0021) */
+  upgradeTo?: RideType | null;
 }
 
 export interface Estimate {

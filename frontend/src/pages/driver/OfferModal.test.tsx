@@ -44,6 +44,14 @@ describe('OfferModal', () => {
     expect(screen.getByRole('button', { name: 'Accept ride' })).toBeDisabled();
   });
 
+  it('tells a driver of a better class that they are the free upgrade', () => {
+    const { rerender } = render(<OfferModal offer={offer} vehicle="PREMIUM" busy={null} error="" onAccept={vi.fn()} onReject={vi.fn()} />);
+    expect(screen.getByText('No Comfort nearby: you are the upgrade, at its fare')).toBeInTheDocument();
+
+    rerender(<OfferModal offer={offer} vehicle="COMFORT" busy={null} error="" onAccept={vi.fn()} onReject={vi.fn()} />);
+    expect(screen.queryByText(/you are the upgrade/)).not.toBeInTheDocument();
+  });
+
   it('accepts and declines', async () => {
     const onAccept = vi.fn();
     const onReject = vi.fn();

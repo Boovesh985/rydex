@@ -2,6 +2,7 @@ package com.rydex.driver.matching;
 
 import com.rydex.common.DriverStatus;
 import com.rydex.common.RedisKeys;
+import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
 import com.rydex.driver.driver.Driver;
 import com.rydex.driver.driver.DriverRepository;
@@ -19,6 +20,7 @@ import com.rydex.messaging.OutboxWriter;
 import com.rydex.presence.PresenceStore;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -172,12 +174,17 @@ public class MatchingService {
         if (offerToPeopleFirst(job, tried) != OfferAttempt.DRIVER_BUSY) {
             return;
         }
-        for (double radiusKm : props.searchRadiiKm()) {
-            List<Candidate> found = finder.within(job.getRideType(), pickup, radiusKm, tried);
-            for (Candidate.Ranked c : ranker.rank(pickup, found)) {
-                tried.add(c.driverId());
-                if (tryOffer(rideId, c) != OfferAttempt.DRIVER_BUSY) {
-                    return;
+        // the booked class first, at every radius; only if nobody of it is free, a free upgrade (ADR 0021)
+        List<RideType> classes = new ArrayList<>(List.of(job.getRideType()));
+        classes.addAll(job.getRideType().upgrades());
+        for (RideType type : classes) {
+            for (double radiusKm : props.searchRadiiKm()) {
+                List<Candidate> found = finder.within(type, pickup, radiusKm, tried);
+                for (Candidate.Ranked c : ranker.rank(pickup, found)) {
+                    tried.add(c.driverId());
+                    if (tryOffer(rideId, c) != OfferAttempt.DRIVER_BUSY) {
+                        return;
+                    }
                 }
             }
         }
@@ -270,7 +277,7 @@ public class MatchingService {
         }
         // Redis is a projection that a failed after-commit write can leave stale; Postgres decides
         Driver driver = drivers.findById(c.driverId()).orElse(null);
-        if (driver == null || driver.getStatus() != DriverStatus.AVAILABLE || driver.getVehicleType() != job.getRideType()) {
+        if (driver == null || driver.getStatus() != DriverStatus.AVAILABLE || !job.getRideType().servedBy(driver.getVehicleType())) {
             if (driver != null) {
                 AfterCommit.run(() -> presence.setStatus(driver.getId(), driver.getStatus(), driver.getVehicleType()));
                 log.warn("Driver {} is {} ({}) in Postgres but was searchable in Redis; projection repaired",

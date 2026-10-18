@@ -33,8 +33,12 @@ public final class RideDtos {
     public record EstimateRequest(@Valid @NotNull LocationInput pickup, @Valid @NotNull LocationInput drop) {
     }
 
-    /** One bookable ride type. {@code etaMinutes} is null when no driver of that type is nearby. */
-    public record RideOption(RideType rideType, BigDecimal fare, Integer etaMinutes, int driversNearby) {
+    /**
+     * One bookable ride type. {@code etaMinutes} is null when no driver of that type, nor of a class it
+     * upgrades to, is nearby. {@code upgradeTo}: none of its own class is nearby, but a driver of this
+     * better class is and would take the ride at its fare (ADR 0021); {@code etaMinutes} is theirs.
+     */
+    public record RideOption(RideType rideType, BigDecimal fare, Integer etaMinutes, int driversNearby, RideType upgradeTo) {
     }
 
     public record RouteView(String polyline, String source) {

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { driversApi, ridesApi, trackingApi } from '../../api/endpoints';
 import { ApiError, errorMessage } from '../../api/http';
-import { ACTIVE_STATUSES, type DriverCard, type LiveLocation, type Ride } from '../../api/types';
+import { ACTIVE_STATUSES, type DriverCard, type LiveLocation, type Ride, type RideType } from '../../api/types';
 import { PaymentPanel } from '../../components/PaymentPanel';
 import { RealisticButton, RealisticHud, TripProgress } from '../../components/Realistic';
 import { RideTimeline } from '../../components/RideTimeline';
@@ -153,7 +153,7 @@ function RideScreen({ rideId }: { rideId: string }) {
           onExit={rx.exit}
         >
           <div className="space-y-3">
-            {driver.data && tracked ? <DriverPanel driver={driver.data} /> : <p className="text-sm font-bold">{rideTypeLabel[r.rideType]} · {inr(r.estFare)}</p>}
+            {driver.data && tracked ? <DriverPanel driver={driver.data} booked={r.rideType} /> : <p className="text-sm font-bold">{rideTypeLabel[r.rideType]} · {inr(r.estFare)}</p>}
             {r.status === 'IN_PROGRESS' && progress != null && (
               <TripProgress progress={progress} from={shortAddress(r.pickup.address)} to={shortAddress(r.drop.address)} />
             )}
@@ -212,7 +212,7 @@ function RideSheet({ ride, location, driver, progress }: { ride: Ride; location:
         <TripProgress progress={progress} from={shortAddress(ride.pickup.address)} to={shortAddress(ride.drop.address)} />
       )}
 
-      {driver && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED' || s === 'IN_PROGRESS') && <DriverPanel driver={driver} />}
+      {driver && (s === 'DRIVER_ASSIGNED' || s === 'DRIVER_ARRIVED' || s === 'IN_PROGRESS') && <DriverPanel driver={driver} booked={ride.rideType} />}
 
       <Trip ride={ride} />
 
@@ -283,7 +283,8 @@ function RidePin({ pin, here }: { pin: string; here: boolean }) {
   );
 }
 
-function DriverPanel({ driver }: { driver: DriverCard }) {
+function DriverPanel({ driver, booked }: { driver: DriverCard; booked: RideType }) {
+  const upgraded = driver.vehicleType !== booked;
   return (
     <div className="flex items-start gap-3">
       <span className="grid size-12 shrink-0 place-items-center rounded-full bg-ink font-display-wide text-lg font-black text-auto" aria-hidden>
@@ -300,6 +301,11 @@ function DriverPanel({ driver }: { driver: DriverCard }) {
         <p className="truncate text-sm text-slate">
           {driver.vehicleModel} · {rideTypeLabel[driver.vehicleType]}
         </p>
+        {upgraded && (
+          <p className="mt-1 inline-block rounded-full bg-go-soft px-2 py-0.5 text-xs font-bold text-go">
+            Free upgrade: a {rideTypeLabel[driver.vehicleType]} at the {rideTypeLabel[booked]} fare
+          </p>
+        )}
         <div className="mt-1.5">
           <Plate number={driver.vehicleNumber} />
         </div>

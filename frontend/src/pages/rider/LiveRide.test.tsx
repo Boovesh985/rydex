@@ -108,6 +108,16 @@ describe('LiveRide', () => {
     expect(screen.getByTestId('car')).toHaveTextContent('13.085,80.27');
   });
 
+  it('says when the driver is a free upgrade', async () => {
+    // an Economy ride taken by a sedan: no hatchback was free (the fixture's driver drives a Tata Tiago)
+    vi.mocked(driversApi.forRide).mockResolvedValue({ id: 'driver-1', name: 'Driver 14', vehicleType: 'COMFORT', vehicleNumber: 'TN 15 OB 1518', vehicleModel: 'Honda City', rating: 4.7 });
+    vi.mocked(ridesApi.get).mockResolvedValue(ride({ status: 'DRIVER_ASSIGNED', driverId: 'driver-1' }));
+    vi.mocked(trackingApi.location).mockResolvedValue(location());
+    show();
+
+    expect(await screen.findByText('Free upgrade: a Comfort at the Economy fare')).toBeInTheDocument();
+  });
+
   it('warns that cancelling after the driver arrived costs a fee', async () => {
     vi.mocked(ridesApi.get).mockResolvedValue(ride({ status: 'DRIVER_ARRIVED', driverId: 'driver-1' }));
     vi.mocked(trackingApi.location).mockResolvedValue(location({ phase: 'AT_PICKUP', etaS: 0 }));

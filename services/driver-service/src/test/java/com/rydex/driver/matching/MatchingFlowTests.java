@@ -166,6 +166,35 @@ class MatchingFlowTests extends IntegrationTest {
     }
 
     @Test
+    void withNoHatchbackFreeASedanTakesTheRideAtItsFare() {
+        TestDriver sedan = onlineDriver(RideType.COMFORT, north(CENTER, 1_500));
+        TestDriver muv = onlineDriver(RideType.XL, north(CENTER, 300)); // never an XL: more seats is another product
+        TestDriver bike = onlineDriver(RideType.BIKE, north(CENTER, 200));
+
+        UUID rideId = requestRide(RideType.ECONOMY, CENTER);
+
+        awaitOfferTo(sedan, rideId);
+        var offer = currentOffer(sedan).getBody();
+        assertThat(offer.path("rideType").asString()).isEqualTo("ECONOMY");
+        assertThat(offer.path("estFare").decimalValue()).isEqualByComparingTo("339");
+        assertNoOffer(muv);
+        assertNoOffer(bike);
+        var accepted = api().post("/api/drivers/me/offers/" + rideId + "/accept", sedan.token(), null);
+        assertThat(accepted.getStatusCode().value()).isEqualTo(200);
+    }
+
+    @Test
+    void anUpgradeNeverBeatsAFreeDriverOfTheBookedClass() {
+        TestDriver sedanNear = onlineDriver(RideType.PREMIUM, north(CENTER, 300));
+        TestDriver comfortFar = onlineDriver(RideType.COMFORT, north(CENTER, 6_000));
+
+        UUID rideId = requestRide(RideType.COMFORT, CENTER);
+
+        awaitOfferTo(comfortFar, rideId);
+        assertNoOffer(sedanNear);
+    }
+
+    @Test
     void searchWidensTheRadiusUntilSomeoneIsFound() {
         TestDriver sixKmAway = onlineDriver(RideType.COMFORT, north(CENTER, 6_000));
         UUID rideId = requestRide(RideType.COMFORT, CENTER);

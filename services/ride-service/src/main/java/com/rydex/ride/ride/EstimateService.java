@@ -52,8 +52,18 @@ public class EstimateService {
         for (RideType type : RideType.values()) {
             var nearby = market.nearbyDrivers(type, pickup, DRIVER_SEARCH_RADIUS_KM, 10);
             Integer eta = nearby.isEmpty() ? null : etaMinutes(nearby.getFirst().distanceM());
+            RideType upgradeTo = null;
+            // none of its own class nearby: matching would offer it to a better class at this fare (ADR 0021)
+            for (RideType better : nearby.isEmpty() ? type.upgrades() : List.<RideType>of()) {
+                var up = market.nearbyDrivers(better, pickup, DRIVER_SEARCH_RADIUS_KM, 1);
+                if (!up.isEmpty()) {
+                    eta = etaMinutes(up.getFirst().distanceM());
+                    upgradeTo = better;
+                    break;
+                }
+            }
             options.add(new RideOption(type, fares.fare(type, route.distanceM(), route.durationS(), surge), eta,
-                    nearby.size()));
+                    nearby.size(), upgradeTo));
         }
         return new EstimateResponse(pickup, drop, route.distanceM(), route.durationS(), surge,
                 new RouteView(route.polyline(), route.source().name()), options);
