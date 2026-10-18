@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rydex.dev/contracts/ai/suggestions.schema.json",
+  "title": "Smart ride suggestions",
+  "description": "POST /suggestions on ai-service (internal): ride-service sends a SuggestionRequest with every rider's estimate and merges the SuggestionResponse into it. Generated from ai-service/app/schemas.py.",
+  "$defs": {
+    "SuggestionRequest": {
+      "properties": {
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
+          "type": "string"
+        },
+        "pickup": {
+          "$ref": "#/$defs/Point"
+        },
+        "drop": {
+          "$ref": "#/$defs/Point"
+        },
+        "requestedAt": {
+          "format": "date-time",
+          "title": "Requestedat",
+          "type": "string"
+        },
+        "distanceM": {
+          "minimum": 0,
+          "title": "Distancem",
+          "type": "integer"
+        },
+        "durationS": {
+          "minimum": 0,
+          "title": "Durations",
+          "type": "integer"
+        },
+        "surgeMultiplier": {
+          "default": 1.0,
+          "minimum": 1,
+          "title": "Surgemultiplier",
+          "type": "number"
+        },
+        "maxSurge": {
+          "default": 2.5,
+          "minimum": 1,
+          "title": "Maxsurge",
+          "type": "number"
+        },
+        "demand": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ride requests around the pickup, last 15-30 min",
+          "title": "Demand"
+        },
+        "supply": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "free drivers around the pickup",
+          "title": "Supply"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/RideOption"
+          },
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        },
+        "routes": {
+          "description": "the quoted route first, then OSRM's alternatives",
+          "items": {
+            "$ref": "#/$defs/RouteOption"
+          },
+          "title": "Routes",
+          "type": "array"
+        },
+        "history": {
+          "description": "the rider's recent trips, newest first",
+          "items": {
+            "$ref": "#/$defs/PastRide"
+          },
+          "maxItems": 50,
+          "title": "History",
+          "type": "array"
+        }
+      },
+      "required": [
+        "userId",
+        "pickup",
+        "drop",
+        "requestedAt",
+        "distanceM",
+        "durationS",
+        "options"
+      ],
+      "title": "SuggestionRequest",
+      "type": "object"
+    },
+    "SuggestionResponse": {
+      "properties": {
+        "suggestionId": {
+          "format": "uuid",
+          "title": "Suggestionid",
+          "type": "string"
+        },
+        "recommendedRideType": {
+          "enum": [
+            "BIKE",
+            "AUTO",
+            "ECONOMY",
+            "COMFORT",
+            "XL",
+            "PREMIUM"
+          ],
+          "title": "Recommendedridetype",
+          "type": "string"
+        },
+        "bestPickupTime": {
+          "$ref": "#/$defs/BestPickupTime"
+        },
+        "alternativePickup": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AlternativePickup"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "route": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RouteChoice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "highlights": {
+          "items": {
+            "enum": [
+              "SHORTER_WAIT",
+              "BETTER_PRICE",
+              "SMARTER_ROUTE"
+            ],
+            "type": "string"
+          },
+          "title": "Highlights",
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "modelVersion": {
+          "title": "Modelversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "suggestionId",
+        "recommendedRideType",
+        "bestPickupTime",
+        "reasons",
+        "highlights",
+        "confidence",
+        "modelVersion"
+      ],
+      "title": "SuggestionResponse",
+      "type": "object"
+    },
+    "PastRide": {
+      "properties": {
+        "rideType": {
+          "enum": [
+            "BIKE",
+            "AUTO",
+            "ECONOMY",
+            "COMFORT",
+            "XL",
+            "PREMIUM"
+          ],
+          "title": "Ridetype",
+          "type": "string"
+        },
+        "fare": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fare"
+        }
+      },
+      "required": [
+        "rideType"
+      ],
+      "title": "PastRide",
+      "type": "object"
+    },
+    "Point": {
+      "properties": {
+        "lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Lat",
+          "type": "number"
+        },
+        "lng": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Lng",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lat",
+        "lng"
+      ],
+      "title": "Point",
+      "type": "object"
+    },
+    "RideOption": {
+      "description": "One ride type as ride-service quoted it.",
+      "properties": {
+        "rideType": {
+          "enum": [
+            "BIKE",
+            "AUTO",
+            "ECONOMY",
+            "COMFORT",
+            "XL",
+            "PREMIUM"
+          ],
+          "title": "Ridetype",
+          "type": "string"
+        },
+        "fare": {
+          "description": "INR, at the current surge",
+          "exclusiveMinimum": 0,
+          "title": "Fare",
+          "type": "number"
+        },
+        "baseFare": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "INR, the same trip without surge",
+          "title": "Basefare"
+        },
+        "etaMinutes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the closest free car; null when none is near",
+          "title": "Etaminutes"
+        },
+        "driversNearby": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Driversnearby",
+          "type": "integer"
+        },
+        "upgradeTo": {
+          "anyOf": [
+            {
+              "enum": [
+                "BIKE",
+                "AUTO",
+                "ECONOMY",
+                "COMFORT",
+                "XL",
+                "PREMIUM"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upgradeto"
+        }
+      },
+      "required": [
+        "rideType",
+        "fare"
+      ],
+      "title": "RideOption",
+      "type": "object"
+    },
+    "RouteOption": {
+      "properties": {
+        "distanceM": {
+          "minimum": 0,
+          "title": "Distancem",
+          "type": "integer"
+        },
+        "durationS": {
+          "description": "free-flow driving time (OSRM)",
+          "minimum": 0,
+          "title": "Durations",
+          "type": "integer"
+        },
+        "polyline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Polyline"
+        }
+      },
+      "required": [
+        "distanceM",
+        "durationS"
+      ],
+      "title": "RouteOption",
+      "type": "object"
+    },
+    "AlternativePickup": {
+      "properties": {
+        "lat": {
+          "title": "Lat",
+          "type": "number"
+        },
+        "lng": {
+          "title": "Lng",
+          "type": "number"
+        },
+        "walkMeters": {
+          "title": "Walkmeters",
+          "type": "integer"
+        },
+        "predictedWaitMin": {
+          "title": "Predictedwaitmin",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lat",
+        "lng",
+        "walkMeters",
+        "predictedWaitMin"
+      ],
+      "title": "AlternativePickup",
+      "type": "object"
+    },
+    "BestPickupTime": {
+      "properties": {
+        "offsetMinutes": {
+          "title": "Offsetminutes",
+          "type": "integer"
+        },
+        "predictedWaitMin": {
+          "title": "Predictedwaitmin",
+          "type": "integer"
+        },
+        "predictedFare": {
+          "title": "Predictedfare",
+          "type": "integer"
+        },
+        "savingsVsNow": {
+          "title": "Savingsvsnow",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "offsetMinutes",
+        "predictedWaitMin",
+        "predictedFare",
+        "savingsVsNow"
+      ],
+      "title": "BestPickupTime",
+      "type": "object"
+    },
+    "RouteChoice": {
+      "properties": {
+        "choice": {
+          "description": "\"fastest\" or \"alternative_N\"",
+          "title": "Choice",
+          "type": "string"
+        },
+        "predictedDurationMin": {
+          "title": "Predicteddurationmin",
+          "type": "integer"
+        },
+        "polyline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "only for an alternative",
+          "title": "Polyline"
+        }
+      },
+      "required": [
+        "choice",
+        "predictedDurationMin"
+      ],
+      "title": "RouteChoice",
+      "type": "object"
+    }
+  }
+}

@@ -3,6 +3,7 @@ package com.rydex.ride.ride;
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
 import com.rydex.events.PaymentPayload;
+import com.rydex.ride.ai.AiDtos.Suggestion;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -46,6 +47,7 @@ public final class RideDtos {
     public record RouteView(String polyline, String source) {
     }
 
+    /** @param suggestion ai-service's smart suggestion for this trip; null when it has none or is unavailable */
     public record EstimateResponse(
             GeoPoint pickup,
             GeoPoint drop,
@@ -53,9 +55,11 @@ public final class RideDtos {
             int durationS,
             BigDecimal surgeMultiplier,
             RouteView route,
-            List<RideOption> options) {
+            List<RideOption> options,
+            Suggestion suggestion) {
     }
 
+    /** @param suggestionId the smart suggestion the rider booked with, if any: it is logged as taken */
     public record BookRideRequest(
             @Valid @NotNull LocationInput pickup,
             @Valid @NotNull LocationInput drop,

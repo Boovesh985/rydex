@@ -1,14 +1,15 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowDownUp, Clock3, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { ridesApi } from '../../api/endpoints';
+import { aiApi, ridesApi } from '../../api/endpoints';
 import { errorMessage } from '../../api/http';
-import type { Estimate, GeoPoint, Ride, RideOption, RideType } from '../../api/types';
+import type { Estimate, GeoPoint, Ride, RideOption, RideType, Suggestion } from '../../api/types';
 import { PlaceSearch } from '../../components/PlaceSearch';
 import { Button, ErrorNote, Eyebrow, Meter, Spinner } from '../../components/ui';
 import { VehicleIcon } from '../../components/VehicleIcon';
 import { distance, inr, minutes, rideTypeBlurb, rideTypeLabel, rideTypeSeats, vehicleNoun } from '../../lib/format';
 import { Shortcuts } from './Shortcuts';
+import { SuggestionCard } from './SuggestionCard';
 
 const pickupDot = <span className="block size-3.5 rounded-full border-[3.5px] border-ink bg-paper" />;
 const dropDot = <span className="block size-3.5 rounded-[3px] bg-ink" />;
@@ -45,8 +46,29 @@ export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusFi
     onEstimate(estimate.data ?? null);
   }, [estimate.data, onEstimate]);
 
+  // the smart suggestion for this trip (a new drop is a new trip): used, dismissed, or still open
+  const trip = drop ? `${drop.lat.toFixed(5)},${drop.lng.toFixed(5)}` : '';
+  const [ai, setAi] = useState<{ trip: string; used?: Suggestion; dismissed?: boolean }>({ trip });
+  const aiNow = ai.trip === trip ? ai : { trip };
+  const suggestion = aiNow.used ?? (aiNow.dismissed ? null : (estimate.data?.suggestion ?? null));
+  // booked with the suggestion: its ride type, after "Use suggestion"
+  const bookedWith = aiNow.used && aiNow.used.recommendedRideType === selected ? aiNow.used.suggestionId : undefined;
+
+  const use = (s: Suggestion) => {
+    setSelected(s.recommendedRideType);
+    if (s.alternativePickup) {
+      const { lat, lng, walkMeters } = s.alternativePickup;
+      onPickup({ lat, lng, address: `Suggested pickup · ${walkMeters} m walk` });
+    }
+    setAi({ trip, used: s });
+  };
+  const dismiss = (s: Suggestion) => {
+    aiApi.feedback(s.suggestionId, false).catch(() => {});
+    setAi({ trip, dismissed: true });
+  };
+
   const book = useMutation({
-    mutationFn: () => ridesApi.book(pickup!, drop!, selected, idempotencyKey.current),
+    mutationFn: () => ridesApi.book(pickup!, drop!, selected, idempotencyKey.current, bookedWith),
     onSuccess: (ride) => {
       idempotencyKey.current = crypto.randomUUID();
       onBooked(ride);
@@ -112,6 +134,7 @@ export function BookingPanel({ pickup, drop, onPickup, onDrop, onSwap, onFocusFi
               <strong>Busy right now:</strong> fares are {surge.toFixed(2)}× the usual.
             </p>
           )}
+          {suggestion && <SuggestionCard suggestion={suggestion} used={!!aiNow.used} onUse={() => use(suggestion)} onDismiss={() => dismiss(suggestion)} />}
           <div role="radiogroup" aria-label="Ride type" className="space-y-2">
             {options.map((o) => (
               <OptionCard key={o.rideType} option={o} selected={o.rideType === selected} onSelect={() => setSelected(o.rideType)} />

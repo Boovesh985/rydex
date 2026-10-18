@@ -1,0 +1,29 @@
+{
+  "version": "2026-10-18",
+  "rows": 80000,
+  "seed": 7,
+  "features": [
+    "hour",
+    "dow",
+    "holiday",
+    "demand",
+    "supply",
+    "ratio",
+    "ride_type",
+    "distance_km",
+    "traffic"
+  ],
+  "data": "synthetic (training/generate.py)",
+  "wait": {
+    "mae": 1.626,
+    "baselineMae": 3.465,
+    "trees": 267,
+    "unit": "minutes"
+  },
+  "surge": {
+    "mae": 0.041,
+    "baselineMae": 0.057,
+    "trees": 278,
+    "unit": "multiplier"
+  }
+}

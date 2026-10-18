@@ -1,8 +1,9 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { placesApi, ridesApi } from '../../api/endpoints';
+import { aiApi, placesApi, ridesApi } from '../../api/endpoints';
 import { ApiError } from '../../api/http';
+import type { Suggestion } from '../../api/types';
 import { CENTRAL, MARINA, estimate, renderWithProviders, ride } from '../../test/fixtures';
 import { BookingPanel } from './BookingPanel';
 
@@ -10,7 +11,20 @@ vi.mock('../../api/endpoints', () => ({
   ridesApi: { estimate: vi.fn(), book: vi.fn(), list: vi.fn().mockResolvedValue({ items: [], page: 0, size: 20, total: 0 }) },
   placesApi: { search: vi.fn() },
   meApi: { places: vi.fn().mockResolvedValue([]), savePlace: vi.fn(), forgetPlace: vi.fn() },
+  aiApi: { feedback: vi.fn().mockResolvedValue(undefined) },
 }));
+
+const suggestion: Suggestion = {
+  suggestionId: '5b0c8a0e-0000-4000-8000-00000000a001',
+  recommendedRideType: 'BIKE',
+  bestPickupTime: { offsetMinutes: 0, predictedWaitMin: 3, predictedFare: 58, savingsVsNow: 0 },
+  alternativePickup: { lat: 13.0838, lng: 80.2712, walkMeters: 150, predictedWaitMin: 2 },
+  route: { choice: 'fastest', predictedDurationMin: 14, polyline: null },
+  reasons: ['Bike is the lowest fare with a short wait: 2 min away', 'Walk 150 m north to a main road: a Bike is predicted there in 2 min instead of 3'],
+  highlights: ['SHORTER_WAIT'],
+  confidence: 0.74,
+  modelVersion: '2026-10-18',
+};
 
 function setup(props: Partial<Parameters<typeof BookingPanel>[0]> = {}) {
   const handlers = {
@@ -139,5 +153,81 @@ describe('retryState', () => {
 
     expect(retry.pickup).toEqual({ lat: 12.9165, lng: 79.1325, address: 'Pinned location' });
     expect(retry.drop).toEqual(MARINA);
+  });
+});
+
+describe('BookingPanel smart suggestion', () => {
+  beforeEach(() => {
+    vi.mocked(ridesApi.estimate).mockResolvedValue(estimate);
+    vi.mocked(ridesApi.book).mockReset();
+  });
+
+  it('shows the smart suggestion and books with it once used', async () => {
+    vi.mocked(ridesApi.estimate).mockResolvedValue({ ...estimate, suggestion });
+    vi.mocked(ridesApi.book).mockResolvedValue(ride({ rideType: 'BIKE' }));
+    const { onPickup } = setup();
+    const user = userEvent.setup();
+
+    const card = await screen.findByRole('region', { name: 'Smart suggestion' });
+    expect(card).toHaveTextContent('Shorter wait time');
+    expect(card).toHaveTextContent('Bike · 3 min wait · ₹58');
+    expect(card).toHaveTextContent('Walk 150 m to be picked up in about 2 min');
+    expect(card).toHaveTextContent('74% sure');
+    await user.click(screen.getByRole('button', { name: 'Use suggestion' }));
+
+    expect(screen.getByRole('radio', { name: /^Bike/ })).toHaveAttribute('aria-checked', 'true');
+    expect(onPickup).toHaveBeenCalledWith({ lat: 13.0838, lng: 80.2712, address: 'Suggested pickup · 150 m walk' });
+    expect(card).toHaveTextContent('Applied: Bike, and the pickup moved to the suggested spot');
+    await user.click(screen.getByRole('button', { name: 'Book Bike' }));
+    await waitFor(() => expect(ridesApi.book).toHaveBeenCalled());
+    expect(vi.mocked(ridesApi.book).mock.calls[0][4]).toBe(suggestion.suggestionId);
+  });
+
+  it('books without the suggestion when another ride type is chosen after using it', async () => {
+    vi.mocked(ridesApi.estimate).mockResolvedValue({ ...estimate, suggestion: { ...suggestion, alternativePickup: null } });
+    vi.mocked(ridesApi.book).mockResolvedValue(ride());
+    setup();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Use suggestion' }));
+    await user.click(screen.getByRole('radio', { name: /^Economy/ }));
+    await user.click(screen.getByRole('button', { name: 'Book Economy' }));
+
+    await waitFor(() => expect(ridesApi.book).toHaveBeenCalled());
+    expect(vi.mocked(ridesApi.book).mock.calls[0][4]).toBeUndefined();
+  });
+
+  it('can dismiss the suggestion, which is reported', async () => {
+    vi.mocked(ridesApi.estimate).mockResolvedValue({ ...estimate, suggestion });
+    setup();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Not now' }));
+
+    expect(screen.queryByRole('region', { name: 'Smart suggestion' })).not.toBeInTheDocument();
+    expect(aiApi.feedback).toHaveBeenCalledWith(suggestion.suggestionId, false);
+  });
+
+  it('suggests a later pickup time when it saves money', async () => {
+    const later: Suggestion = {
+      ...suggestion,
+      alternativePickup: null,
+      highlights: ['BETTER_PRICE'],
+      bestPickupTime: { offsetMinutes: 20, predictedWaitMin: 4, predictedFare: 98, savingsVsNow: 26 },
+    };
+    vi.mocked(ridesApi.estimate).mockResolvedValue({ ...estimate, suggestion: later });
+    setup();
+
+    const card = await screen.findByRole('region', { name: 'Smart suggestion' });
+    expect(card).toHaveTextContent('Better price');
+    expect(card).toHaveTextContent(/Bike · book at \d{1,2}:\d{2}\s?[ap]m · ₹98/i);
+    expect(card).toHaveTextContent('In 20 min the fare is predicted to drop by ₹26');
+  });
+
+  it('has no card when ai-service gave no suggestion', async () => {
+    setup();
+
+    expect(await screen.findByRole('radio', { name: /Economy/ })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Smart suggestion' })).not.toBeInTheDocument();
   });
 });

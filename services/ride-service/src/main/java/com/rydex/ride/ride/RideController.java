@@ -50,9 +50,9 @@ class RideController {
 
     @PostMapping("/estimate")
     @PreAuthorize("hasRole('RIDER')")
-    @Operation(summary = "Fares and driver ETAs for every ride type")
-    EstimateResponse estimate(@Valid @RequestBody EstimateRequest req) {
-        return estimates.estimate(req.pickup().toGeoPoint(), req.drop().toGeoPoint());
+    @Operation(summary = "Fares and driver ETAs for every ride type, and a smart suggestion when ai-service has one")
+    EstimateResponse estimate(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody EstimateRequest req) {
+        return estimates.estimate(req.pickup().toGeoPoint(), req.drop().toGeoPoint(), AuthUser.from(jwt).id());
     }
 
     @PostMapping

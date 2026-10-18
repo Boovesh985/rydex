@@ -217,6 +217,11 @@ export function AdminDashboard() {
                     value={stats.data?.avgPickupS == null ? '–' : stats.data.avgPickupS < 60 ? `${stats.data.avgPickupS} s` : minutes(stats.data.avgPickupS)}
                     note="median, assigned → arrived"
                   />
+                  <Kpi
+                    label="AI suggestions"
+                    value={stats.data?.aiSuggestions ? `${Math.round((stats.data.aiBooked / stats.data.aiSuggestions) * 100)}%` : '–'}
+                    note={stats.data ? `booked with · ${stats.data.aiSuggestions} shown to riders` : ''}
+                  />
                 </section>
                 {grid.data && layers.grid && (
                   <p className="text-sm text-slate">

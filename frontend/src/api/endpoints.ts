@@ -55,11 +55,17 @@ export const placesApi = {
     api<Route>(`/api/places/route?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}` + `&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}`),
 };
 
+export const aiApi = {
+  /** accepted false: the rider dismissed the suggestion (booking with it counts as accepted) */
+  feedback: (suggestionId: string, accepted: boolean) => api<void>(`/api/ai/suggestions/${suggestionId}/feedback`, json({ accepted })),
+};
+
 export const ridesApi = {
   estimate: (pickup: GeoPoint, drop: GeoPoint) => api<Estimate>('/api/rides/estimate', json({ pickup: point(pickup), drop: point(drop) })),
-  book: (pickup: GeoPoint, drop: GeoPoint, rideType: RideType, idempotencyKey: string) =>
+  /** suggestionId: the smart suggestion the rider booked with, if any */
+  book: (pickup: GeoPoint, drop: GeoPoint, rideType: RideType, idempotencyKey: string, suggestionId?: string) =>
     api<Ride>('/api/rides', {
-      ...json({ pickup: point(pickup), drop: point(drop), rideType }),
+      ...json({ pickup: point(pickup), drop: point(drop), rideType, suggestionId }),
       headers: { 'Idempotency-Key': idempotencyKey },
     }),
   get: (id: string) => api<Ride>(`/api/rides/${id}`),

@@ -25,7 +25,7 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Boots the whole service against real PostGIS, Redis and Kafka containers. External HTTP
- * dependencies (OSRM, Nominatim) are mocked.
+ * dependencies (OSRM, Nominatim) are mocked; ai-service is {@link AiStub}.
  *
  * <p>Containers are plain JVM-wide singletons wired in via {@link DynamicPropertySource}
  * rather than {@code @ServiceConnection} beans: Spring 7 pauses cached contexts between
@@ -87,6 +87,7 @@ public abstract class IntegrationTest {
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
+        registry.add("rydex.ai.base-url", AiStub::baseUrl);
     }
 
     protected static KafkaProbe kafka() {

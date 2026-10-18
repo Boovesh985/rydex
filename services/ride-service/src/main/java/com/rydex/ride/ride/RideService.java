@@ -6,6 +6,7 @@ import com.rydex.events.EventEnvelope;
 import com.rydex.events.EventType;
 import com.rydex.events.RidePayload;
 import com.rydex.messaging.OutboxWriter;
+import com.rydex.ride.ai.SuggestionLog;
 import com.rydex.ride.pricing.MarketplaceStore;
 import com.rydex.ride.ride.RideDtos.BookRideRequest;
 import com.rydex.ride.ride.RideDtos.PageView;
@@ -62,11 +63,12 @@ public class RideService {
     private final RideProperties props;
     private final ArrivalCheck arrivals;
     private final UserRepository users;
+    private final SuggestionLog suggestionLog;
     private final Clock clock;
 
     RideService(RideRepository rides, RideStatusChangeRepository history, EstimateService estimates, OtpService otps,
                 OutboxWriter outbox, MarketplaceStore market, StringRedisTemplate redis, RideProperties props,
-                ArrivalCheck arrivals, UserRepository users, Clock clock) {
+                ArrivalCheck arrivals, UserRepository users, SuggestionLog suggestionLog, Clock clock) {
         this.rides = rides;
         this.history = history;
         this.estimates = estimates;
@@ -77,6 +79,7 @@ public class RideService {
         this.props = props;
         this.arrivals = arrivals;
         this.users = users;
+        this.suggestionLog = suggestionLog;
         this.clock = clock;
     }
 
@@ -90,8 +93,10 @@ public class RideService {
         UUID id = UUID.randomUUID();
         String otp = otps.otpFor(id);
 
+        // only a suggestion this rider was shown counts
+        UUID suggestionId = suggestionLog.ownedBy(req.suggestionId(), rider.id()) ? req.suggestionId() : null;
         Ride ride = Ride.request(id, rider.id(), req.rideType(), pickup, drop, quote, otps.hash(id, otp),
-                req.suggestionId(), now);
+                suggestionId, now);
         if (users.findById(rider.id()).map(User::isSimulated).orElse(false)) {
             ride.markSimulated();
         }
@@ -101,6 +106,9 @@ public class RideService {
             throw ApiException.conflict("You already have a ride in progress");
         }
         record(ride, null, rider.actor(), now);
+        if (suggestionId != null) {
+            suggestionLog.booked(suggestionId, rider.id(), id);
+        }
         publish(EventType.RIDE_REQUESTED, ride, null);
         afterCommit(() -> market.recordDemand(pickup, now));
         return RideView.of(ride, otp, null);

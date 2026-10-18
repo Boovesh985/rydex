@@ -37,11 +37,13 @@ public class AdminStats {
      * @param avgPickupS     median seconds from driver assigned to driver arrived
      * @param revenue        fares of rides completed in the window (INR)
      * @param avgFare        mean fare of those rides
+     * @param aiSuggestions  smart suggestions shown to riders in the window
+     * @param aiBooked       how many of them the rider booked with
      */
     public record Stats(int hours, Instant since, Map<String, Long> inFlight, long requested,
                         Map<String, Long> byStatus, long completed, long cancelled, long noDriverFound,
                         Double matchRate, Integer avgAssignS, Integer avgPickupS, BigDecimal revenue,
-                        BigDecimal avgFare, long riders, long drivers) {
+                        BigDecimal avgFare, long riders, long drivers, long aiSuggestions, long aiBooked) {
     }
 
     public record DemandCell(double lat, double lng, long requests) {
@@ -109,13 +111,21 @@ public class AdminStats {
                 .query((rs, i) -> new long[] {rs.getLong("riders"), rs.getLong("drivers")})
                 .single();
 
+        var ai = jdbc.sql("""
+                        SELECT count(*) AS shown, count(*) FILTER (WHERE accepted AND ride_id IS NOT NULL) AS booked
+                        FROM ai_suggestion_log WHERE created_at >= :from
+                        """)
+                .param("from", from)
+                .query((rs, i) -> new long[] {rs.getLong("shown"), rs.getLong("booked")})
+                .single();
+
         return new Stats(hours, since, inFlight, requested, byStatus, money.completed(), cancelled,
                 byStatus.getOrDefault("NO_DRIVER_FOUND", 0L),
                 outcome.searched() == 0 ? null : (double) outcome.matched() / outcome.searched(),
                 seconds(outcome.assignS()), seconds(outcome.pickupS()),
                 money.revenue().setScale(2, RoundingMode.HALF_UP),
                 money.avgFare() == null ? null : money.avgFare().setScale(2, RoundingMode.HALF_UP),
-                people[0], people[1]);
+                people[0], people[1], ai[0], ai[1]);
     }
 
     /** Requests in the window, counted per grid cell of {@link #CELL_DEG} degrees around the cell's centre. */

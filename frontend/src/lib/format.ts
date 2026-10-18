@@ -22,6 +22,10 @@ const dateFormat = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'sh
 export const clock = (iso: string | null | undefined) => (iso ? timeFormat.format(new Date(iso)) : '');
 export const when = (iso: string | null | undefined) => (iso ? dateFormat.format(new Date(iso)) : '');
 
+const cityTimeFormat = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+/** The time in Chennai `minutes` from `now`, e.g. "10:55 am" (suggested pickup times are the city's). */
+export const cityClock = (now: Date, minutes = 0) => cityTimeFormat.format(new Date(+now + minutes * 60_000));
+
 /** First line of an address: "Chennai Central, Park Town, ..." -> "Chennai Central". */
 export const shortAddress = (address: string | null | undefined, fallback = 'Pinned location') => address?.split(',')[0]?.trim() || fallback;
 

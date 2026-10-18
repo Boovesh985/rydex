@@ -2,6 +2,8 @@ package com.rydex.ride.ride;
 
 import com.rydex.common.RideType;
 import com.rydex.common.geo.GeoPoint;
+import com.rydex.ride.ai.AiDtos.Suggestion;
+import com.rydex.ride.ai.SuggestionService;
 import com.rydex.ride.geo.GeoProperties;
 import com.rydex.ride.geo.RouteResult;
 import com.rydex.ride.geo.RoutingService;
@@ -17,6 +19,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /** Fare + ETA for every ride type on a route. The server always recomputes; client prices are never trusted. */
@@ -32,22 +35,28 @@ public class EstimateService {
     private final FareCalculator fares;
     private final SurgeCalculator surgeCalculator;
     private final GeoProperties geo;
+    private final SuggestionService suggestions;
     private final Clock clock;
 
     EstimateService(RoutingService routing, MarketplaceStore market, FareCalculator fares,
-                    SurgeCalculator surgeCalculator, GeoProperties geo, Clock clock) {
+                    SurgeCalculator surgeCalculator, GeoProperties geo, SuggestionService suggestions, Clock clock) {
         this.routing = routing;
         this.market = market;
         this.fares = fares;
         this.surgeCalculator = surgeCalculator;
         this.geo = geo;
+        this.suggestions = suggestions;
         this.clock = clock;
     }
 
-    public EstimateResponse estimate(GeoPoint pickup, GeoPoint drop) {
+    /** For a rider: with ai-service's suggestion when it has one in time. */
+    public EstimateResponse estimate(GeoPoint pickup, GeoPoint drop, UUID riderId) {
         validateTrip(pickup, drop);
         RouteResult route = routing.route(pickup, drop);
-        BigDecimal surge = currentSurge(pickup);
+        Instant now = clock.instant();
+        long demand = market.demandAround(pickup, now);
+        long supply = market.supplyAround(pickup);
+        BigDecimal surge = surgeCalculator.surge(demand, supply);
         List<RideOption> options = new ArrayList<>();
         for (RideType type : RideType.values()) {
             var nearby = market.nearbyDrivers(type, pickup, DRIVER_SEARCH_RADIUS_KM, 10);
@@ -65,8 +74,10 @@ public class EstimateService {
             options.add(new RideOption(type, fares.fare(type, route.distanceM(), route.durationS(), surge), eta,
                     nearby.size(), upgradeTo));
         }
+        var trip = new SuggestionService.Trip(pickup, drop, route, surge, demand, supply, options, now);
+        Suggestion suggestion = riderId == null ? null : suggestions.suggest(riderId, trip).orElse(null);
         return new EstimateResponse(pickup, drop, route.distanceM(), route.durationS(), surge,
-                new RouteView(route.polyline(), route.source().name()), options);
+                new RouteView(route.polyline(), route.source().name()), options, suggestion);
     }
 
     public Quote quote(GeoPoint pickup, GeoPoint drop, RideType type) {

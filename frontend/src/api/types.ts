@@ -64,6 +64,25 @@ export interface Estimate {
   surgeMultiplier: number;
   route: { polyline: string | null; source: string };
   options: RideOption[];
+  /** ai-service's smart suggestion; null when it has none or did not answer in time */
+  suggestion?: Suggestion | null;
+}
+
+export type SuggestionHighlight = 'SHORTER_WAIT' | 'BETTER_PRICE' | 'SMARTER_ROUTE';
+
+/** Smart ride suggestion (ai-service, contracts/ai/suggestions.schema.json). */
+export interface Suggestion {
+  suggestionId: string;
+  recommendedRideType: RideType;
+  /** offsetMinutes 0: now is best; later only when it is predicted to save money */
+  bestPickupTime: { offsetMinutes: number; predictedWaitMin: number; predictedFare: number; savingsVsNow: number };
+  /** a short walk to a spot with a clearly shorter wait */
+  alternativePickup: { lat: number; lng: number; walkMeters: number; predictedWaitMin: number } | null;
+  route: { choice: string; predictedDurationMin: number; polyline: string | null } | null;
+  reasons: string[];
+  highlights: SuggestionHighlight[];
+  confidence: number;
+  modelVersion: string;
 }
 
 export interface Route {
@@ -275,6 +294,9 @@ export interface Stats {
   avgFare: number | null;
   riders: number;
   drivers: number;
+  /** smart suggestions shown to riders in the window, and how many they booked with */
+  aiSuggestions: number;
+  aiBooked: number;
 }
 
 export interface DemandCell {

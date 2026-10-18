@@ -83,6 +83,10 @@ resilience4j:
         base-config: default
       nominatim:
         base-config: default
+      ai:
+        base-config: default
+        # suggestions are optional: back off for a while once ai-service keeps failing
+        wait-duration-in-open-state: 60s
 
 rydex:
   jwt:
@@ -132,6 +136,12 @@ rydex:
     nominatim-interval: 1100ms
     fallback-speed-kmh: 22
     road-factor: 1.35
+  ai:
+    # smart ride suggestions (ai-service, internal only); an estimate never waits longer than this for one
+    enabled: ${AI_ENABLED:true}
+    base-url: ${AI_BASE_URL:http://localhost:8085}
+    connect-timeout: 150ms
+    timeout: 300ms
   fares:
     max-surge: 2.5
     tariffs:

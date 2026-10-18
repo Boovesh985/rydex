@@ -13,6 +13,8 @@
 #            KPIs and demand; and, if the frontend dev server runs, its proxy to every service
 #   Audit    encrypted accounts, password rules, lockout, admin rides in flight, trip paths
 #   City     the living city (ADR 0016): nearby cars without driver ids, NPC rides flagged
+#   Phase 7  AI ride suggestions: with ai-service (:8085) up, the estimate's suggestion, booking with
+#            it and dismissing one; without it, estimates still work (the fallback)
 # Stop the simulator first: its drivers can win this test's offers.
 #
 # Prerequisites: `docker compose -f infra/docker-compose.yml up -d`, then ride-service (:8081),
@@ -29,6 +31,7 @@ param(
     [string]$TrackingUrl = "http://localhost:8083",
     [string]$PaymentUrl = "http://localhost:8084",
     [string]$FrontendUrl = "http://localhost:5173",
+    [string]$AiUrl = "http://localhost:8085",
     [switch]$PayInBrowser
 )
 
@@ -593,6 +596,35 @@ $npcRide = Api POST "$RideUrl/api/rides" $npc @{ pickup = $center; drop = $airpo
 Check "an NPC rider's ride is marked simulated (paid through the mock provider)" ($npcRide.Status -eq 201 -and $npcRide.Body.simulated -eq $true) "HTTP $($npcRide.Status)"
 if ($npcRide.Status -eq 201) { Api POST "$RideUrl/api/rides/$($npcRide.Body.id)/cancel" $npc @{ reason = "smoke test" } | Out-Null }
 Check "the manual tester's rides are not" ((Api GET "$RideUrl/api/rides/$rideId" $rider).Body.simulated -eq $false)
+
+# ---------------------------------------------------------------- Phase 7
+Section "Phase 7 - AI ride suggestions ($AiUrl)"
+$aiHealth = $null
+try { $aiHealth = Invoke-RestMethod -Uri "$AiUrl/health" -TimeoutSec 3 } catch { }
+$aiEst = Api POST "$RideUrl/api/rides/estimate" $rider @{ pickup = $center; drop = $airport }
+if ($aiHealth) {
+    $info = Invoke-RestMethod -Uri "$AiUrl/model/info" -TimeoutSec 5
+    Check "ai-service has a trained model that beats a constant guess" ($info.wait.mae -gt 0 -and $info.wait.mae -lt $info.wait.baselineMae) `
+        ("model {0}: wait MAE {1} min (constant guess {2}), live features {3}" -f $info.version, $info.wait.mae, $info.wait.baselineMae, $info.liveFeatures)
+    $sug = $aiEst.Body.suggestion
+    Check "the estimate carries a smart suggestion" ($aiEst.Status -eq 200 -and $sug.suggestionId -and $sug.recommendedRideType) `
+        "$($sug.recommendedRideType), $($sug.bestPickupTime.predictedWaitMin) min, Rs $($sug.bestPickupTime.predictedFare): $(@($sug.reasons)[0])"
+    if ($sug.suggestionId) {
+        $statsBefore = (Api GET "$RideUrl/api/admin/stats?hours=1" $admin).Body
+        $withIt = Api POST "$RideUrl/api/rides" $rider @{ pickup = $center; drop = $airport; rideType = $sug.recommendedRideType; suggestionId = $sug.suggestionId } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
+        Check "booking with the suggestion works" ($withIt.Status -eq 201) "HTTP $($withIt.Status), $($withIt.Body.rideType)"
+        if ($withIt.Status -eq 201) { Api POST "$RideUrl/api/rides/$($withIt.Body.id)/cancel" $rider @{ reason = "smoke test" } | Out-Null }
+        $statsAfter = (Api GET "$RideUrl/api/admin/stats?hours=1" $admin).Body
+        Check "... and is logged as taken (admin KPI)" ($statsAfter.aiBooked -eq $statsBefore.aiBooked + 1) "$($statsAfter.aiBooked) of $($statsAfter.aiSuggestions) suggestions booked in the last hour"
+        $other = (Api POST "$RideUrl/api/rides/estimate" $rider @{ pickup = $center; drop = $airport }).Body.suggestion
+        $dismiss = Api POST "$RideUrl/api/ai/suggestions/$($other.suggestionId)/feedback" $rider @{ accepted = $false }
+        Check "a rider can dismiss a suggestion" ($dismiss.Status -eq 204) "HTTP $($dismiss.Status)"
+    }
+} else {
+    Write-Host "ai-service not running at $AiUrl (cd ai-service; .venv\Scripts\python -m uvicorn app.main:app --port 8085): checking the fallback only." -ForegroundColor Yellow
+    Check "without ai-service the estimate has no suggestion" ($aiEst.Status -eq 200 -and -not $aiEst.Body.suggestion)
+}
+Check "with or without ai-service the estimate prices every ride type" ($aiEst.Status -eq 200 -and @($aiEst.Body.options).Count -eq 6)
 
 # ---------------------------------------------------------------- summary
 Write-Host ""
