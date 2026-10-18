@@ -1,0 +1,52 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report this. For a security problem, do not open an issue; see SECURITY.md.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Rider app
+        - Driver app
+        - Operations (admin)
+        - ride-service
+        - driver-service
+        - tracking-service
+        - payment-service
+        - Simulator
+        - Infrastructure / CI
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in as rider1@rydex.dev
+        2. Book an Economy ride to ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Service logs, the browser console, or a screenshot. Remove any secrets first.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: Windows 11, Chrome 141, commit abc1234

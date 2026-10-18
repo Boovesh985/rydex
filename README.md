@@ -1,175 +1,195 @@
+<div align="center">
+
 # Rydex
 
-Uber-style ride hailing with live driver tracking and AI ride suggestions, built on free tiers only.
-React · Java 21 / Spring Boot 4 · PostgreSQL + PostGIS · Redis · Apache Kafka · WebSockets · FastAPI.
+**Uber-style ride hailing with live driver tracking, a living simulated city and a 3D chase camera, built on free tiers only.**
 
-> 🚧 Work in progress. Phases 0–6 (scaffold, ride-service, driver-service, Kafka event flow, live tracking over WebSockets, payments, web app and driver simulator) are done, followed by a security audit (encrypted personal data, Argon2id passwords, account lockout), a realistic 3D tracking mode and the living city (automated drivers and riders, traffic, a game-like 3D city). The full plan is in [docs/MASTER_PROMPT.md](docs/MASTER_PROMPT.md).
+[![CI](https://github.com/Boovesh985/rydex/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Boovesh985/rydex/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4-6DB33F?logo=springboot&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-KRaft-231F20?logo=apachekafka&logoColor=white)
+![PostgreSQL + PostGIS](https://img.shields.io/badge/PostgreSQL-PostGIS-4169E1?logo=postgresql&logoColor=white)
 
-## Quick start
+[Features](#features) · [Architecture](#architecture) · [Getting started](#getting-started) · [Guide](docs/GUIDE.md) · [Decisions](docs/adr) · [Roadmap](#roadmap)
 
-Requires Docker and JDK 21; Node.js 22.12+ for the web app and Python 3.12+ for the driver simulator. Maven is not required; use the wrapper.
+<img src="docs/images/ride-along.jpg" alt="Riding along with an auto rickshaw in Realistic 3D on the operations map: the vehicle on a life-size street with trees and street lights, its driver and trip at the side" width="100%">
 
-**Windows (PowerShell)**
-```powershell
-# 1. Infrastructure: Postgres+PostGIS, Redis, Kafka (topics are created automatically)
-docker compose -f infra/docker-compose.yml up -d
+</div>
 
-# 2. Build and test every backend module (integration tests use Testcontainers)
-.\mvnw.cmd verify
+## About
 
-# 3. Stable JWT signing key (optional; needs Git Bash). Without it an ephemeral key is used.
-& "C:\Program Files\Git\bin\bash.exe" infra/scripts/gen-jwt-keys.sh
+Rydex is a ride-hailing platform in the spirit of Uber and Ola, set in Chennai: riders book bikes, autos and cabs, drivers get offers and drive the trip, and operations watch the whole city live. Four Spring Boot services talk over Kafka with a transactional outbox, live positions travel over WebSockets, and a Python simulator fills the city with automated drivers and riders who book, drive, pay and rate on their own.
 
-# 4. Run ride-service, then open http://localhost:8081/swagger-ui
-cd services\ride-service; ..\..\mvnw.cmd spring-boot:run
+Everything runs locally with Docker, and the deployment plan uses free tiers only (Oracle Cloud Always Free, Vercel, DuckDNS).
 
-# 5. In a second terminal, run driver-service (http://localhost:8082/swagger-ui)
-cd services\driver-service; ..\..\mvnw.cmd spring-boot:run
+> [!NOTE]
+> Work in progress: phases 0–6 of the [build plan](docs/MASTER_PROMPT.md) are done. Next up are AI ride suggestions, production hardening, observability and the public deployment (see the [roadmap](#roadmap)).
 
-# 6. In a third terminal, run tracking-service (WebSocket at ws://localhost:8083/ws)
-cd services\tracking-service; ..\..\mvnw.cmd spring-boot:run
+## Features
 
-# 7. In a fourth terminal, run payment-service (http://localhost:8084/swagger-ui)
-cd services\payment-service; ..\..\mvnw.cmd spring-boot:run
+**Riders**
+- Six ride types, from a bike taxi to a premium sedan, priced upfront with live "closest car" times.
+- Free upgrades: an Economy ride may come as a Comfort cab, at the Economy fare.
+- The car moves live on the map; a 4-digit PIN starts the trip.
+- Saved Home and Work, recent destinations, trip ratings.
+- When no driver is found: the rides free nearby right now, one tap to book.
 
-# 8. In a fifth terminal, run the web app, then open http://localhost:5173
-cd frontend; npm install; npm run dev
+**Drivers**
+- Offers matched by geohash and road ETA, 15 seconds to accept, with locks so a driver gets one offer at a time.
+- A dashboard for the whole trip, a simulated drive for testing, and a vehicle change.
 
-# 9. In a sixth terminal, bring the city to life: 40 automated drivers and 30 automated riders
-cd simulator; pip install -r requirements.txt; python simulate.py --city
+**Operations**
+- A live city map: free cars, cars on the way to pickups, trips under way, waiting riders, demand and the matching grid.
+- KPIs (median times, so a stuck ride cannot skew them), alerts, refunds, and **ride along**: click any vehicle and the chase camera follows it.
+
+**Realistic 3D**
+- One switch tilts any map into a life-size 3D city: roads with lane lines, trees, palms, street lights, the real sun and moon over Chennai, and detailed vehicles that steer, lean and brake.
+- Simulated traffic, and day and night that follow Chennai time.
+
+**Under the hood**
+- Transactional outbox, idempotent consumers, retries and dead-letter topics; stuck and abandoned rides are recovered.
+- Emails and phone numbers encrypted at rest (AES-256-GCM), Argon2id passwords, RS256 tokens with rotating refresh, account lockout.
+- Payments through a mock provider or Razorpay test mode, with late-cancellation fees and refunds.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/booking.jpg" alt="The rider's booking screen: six ride types with fares and times, the route to Chennai Airport over simulated traffic"></td>
+    <td width="50%"><img src="docs/images/operations.jpg" alt="The operations map: the living city's vehicles, waiting riders and dispatch lines over Chennai, with live KPIs at the side"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Booking: every ride type, priced upfront</sub></td>
+    <td align="center"><sub>Operations: the living city, live</sub></td>
+  </tr>
+</table>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    web["Web app<br/>React · MapLibre · three.js"]
+    sim["Simulator<br/>NPC drivers + riders"]
+
+    subgraph services["Spring Boot services"]
+        ride["ride-service :8081<br/>auth · booking · state machine"]
+        driver["driver-service :8082<br/>availability · matching · offers"]
+        tracking["tracking-service :8083<br/>STOMP WebSocket · live ETA"]
+        payment["payment-service :8084<br/>charges · refunds"]
+    end
+
+    kafka[["Apache Kafka<br/>ride · payment · location events"]]
+    pg[("PostgreSQL + PostGIS<br/>schema per service")]
+    redis[("Redis<br/>GEO index · presence · pub/sub")]
+    rzp["Razorpay<br/>test mode"]
+
+    web -- "REST /api" --> ride & driver & payment
+    web <-- "WebSocket /ws" --> tracking
+    sim -- "REST + WebSocket" --> services
+
+    ride & driver & payment -- "outbox" --> kafka
+    tracking -- "driver locations" --> kafka
+    kafka --> ride & driver & tracking & payment
+
+    ride & driver & tracking & payment --> pg
+    driver & tracking --> redis
+    payment --> rzp
 ```
 
-**The living city (ADR 16).**
-- **The NPCs:** with `python simulate.py --city` running, automated drivers and riders go about Chennai on their own.
-  - Free cars cruise, and riders book trips between real places.
-  - Drivers pick them up, hear their PIN, drive them through the traffic and get paid.
-- **Your accounts:** `rider1@rydex.dev` and `driver01@rydex.dev` are left for you.
-- **The operations map** shows it all live:
-  - free cars;
-  - cars heading to pickups (amber, with a line to the rider);
-  - cars carrying riders (teal);
-  - riders waiting at their pickups.
+A booking flows `RIDE_REQUESTED → DRIVER_ASSIGNED → DRIVER_ARRIVED → IN_PROGRESS → COMPLETED`; each step is an event that the other services consume exactly once (idempotent consumers), and every event reaches the rider and driver live through tracking-service. The decisions behind each piece are written up as [architecture decision records](docs/adr).
 
-**Ride types.** One app for every way people get around the city (ADR 18), cheapest first:
-- **Bike:** a motorbike taxi for one, helmet provided; it weaves through traffic.
-- **Auto:** an auto rickshaw with three seats.
-- **Cabs:** Economy (hatchback), Comfort (sedan), XL (six-seat MUV) and Premium (premium sedan).
-
-**Try a ride.**
-- **Book:** sign in as `rider1@rydex.dev` (the demo buttons fill it in). The free bikes, autos and cabs around you drive about on the map. Search or tap the map for a drop, pick a ride type and book.
-- **Ride:** a nearby automated driver accepts and drives to you. They wait at the pickup for your PIN, then start the trip and drive you to the drop. The car moves live on your map.
-- **Drive:** sign in as `driver01@rydex.dev` in a second browser (or a private window), switch on **Simulate driving** and go online. Real people come first in matching:
-  - you get the offer for any automated rider's ride within 3 km before the automated drivers do;
-  - at the pickup, the automated rider "reads out" their PIN on your screen, and you type it in.
-- **Both sides yourself:** with driver01 online, rider1's rides go to you first (anywhere within 8 km), as long as you book driver01's ride type (Economy, unless you change it: while offline, **Change vehicle** turns driver01 into a bike, an auto or any cab).
-- **Watch:** sign in as `admin@rydex.dev` for the operations map: the living city, the geohash grid matching uses, demand and KPIs, and every ride in flight (open one to watch it live).
-- **Ride along:** on the operations map, click any vehicle. In Realistic 3D the chase camera rides behind it, and its driver and trip show live at the side. Close it (X or Esc) to return to the view you had.
-
-**Realistic 3D.** On the booking map, a live ride, the driver dashboard, a trip page or the operations map, press **Realistic 3D**:
-- the map tilts, buildings rise, and at street level everything is life-size: asphalt roads with pavements and lane lines;
-- streets get broadleaf trees, coconut palms swaying in the breeze, and street lights;
-- the sun (or the moon and stars) sits where it really is over Chennai, and clouds drift by behind the buildings;
-- the vehicle becomes a detailed 3D model that steers into turns and shows brake lights and indicators:
-  - a cab (number plates, rims, a lit taxi sign) leans out of corners;
-  - a bike's rider wears a helmet, and a pillion rides behind on a trip; the bike leans into the turns;
-  - an auto has its driver up front under the canopy, and passengers on the back bench during a trip;
-- a chase camera rides behind it, with a speedometer and the ETA overhead.
-
-Moving the camera:
-- **Following a car:** drag to look around it (it swings back behind the car), scroll or pinch to zoom, double-click to reset. The camera button (or C) switches between chase, high chase, street level and top-down. Arrow keys look and tilt.
-- **Free camera** (the operations map, the booking map, or with Follow off): drag to move, right-drag or Ctrl+drag to turn and tilt, scroll to zoom. The camera button steps between street tilt, bird's eye and top-down.
-
-Every map has two switches by its zoom buttons:
-- **traffic:** Google-style green, orange, red and dark red on the main roads. It is simulated, and the automated cars slow down in it.
-- **day and night:** day from 6 am to 6 pm and night from 6 pm to 6 am by the clock; the switch on every map flips it by hand until the next 6 o'clock. The night city has glowing street lights and headlights.
-
-Maps are MapLibre vector maps on free OpenFreeMap tiles. The 3D vehicles and scenery are drawn with three.js (ADR 15, ADR 16, ADR 17, ADR 18).
-
-The web app talks to one origin: the Vite dev server forwards each `/api` prefix and `/ws` to its service (ADR 13).
-The simulator signs in at most 15 accounts a minute, so the whole city takes about 5 minutes to come in. Automated
-riders read out their PIN to automated drivers. For your own rides the drivers fall back to ride-service's
-development OTP secret after a short wait (`--otp-secret` for any other). Automated riders always pay through the
-mock provider, so they never create Razorpay orders. See [simulator/README.md](simulator/README.md).
-
-Payments use a mock provider by default (every charge succeeds at once). To use **Razorpay test mode** instead,
-copy `services/payment-service/.env.example` to `services/payment-service/.env` (git-ignored), fill in your test
-keys and restart payment-service. No real money moves. The rider pays in Razorpay Checkout from the ride screen
-("Pay"); choose Netbanking (any bank, then Success) or a
-[test card](https://razorpay.com/docs/payments/payments/test-card-details/). Avoid Wallet: Razorpay test mode would
-not refund a wallet payment. `http://localhost:8084/dev/checkout.html` pays one ride without the web app. See ADR 12.
-
-Already have a database volume from before Phase 4? Add the newer schemas and roles once (safe to repeat):
-```powershell
-Get-Content infra\postgres\initdb\01-init.sh -Raw | docker compose -f infra/docker-compose.yml exec -T postgres bash -s
-```
-
-**Check that it works.** With the infrastructure and the four services running, this tests everything built so
-far and prints PASS/FAIL per check. It runs a full ride across the services over Kafka (book, offer, accept,
-arrive, OTP start, complete), the same ride live over WebSockets (the offer pushed to the driver, accepted over
-the socket, notifications and the driver's position streamed to the rider), and payments (the fare charged, a late
-cancellation fee, an admin refund), then what the web app reads (driver card, routes, admin KPIs) and, if the dev
-server runs, its proxy to every service. CI runs it on every push, followed by a Playwright test that books and
-follows a ride in Chromium (`cd frontend; npx playwright install chromium; npm run e2e`):
-```powershell
-powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
-```
-In Razorpay test mode, add `-PayInBrowser`: it opens the test checkout to pay the cancellation fee, then refunds it.
-
-**macOS / Linux / Git Bash**
-```bash
-docker compose -f infra/docker-compose.yml up -d
-./mvnw verify
-bash infra/scripts/gen-jwt-keys.sh
-cd services/ride-service && ../../mvnw spring-boot:run
-cd services/driver-service && ../../mvnw spring-boot:run   # second terminal
-cd services/tracking-service && ../../mvnw spring-boot:run # third terminal
-cd services/payment-service && ../../mvnw spring-boot:run  # fourth terminal
-cd frontend && npm install && npm run dev                     # fifth: http://localhost:5173
-cd simulator && pip install -r requirements.txt && python simulate.py --city      # sixth
-```
-
-**Security (ADR 14).** Emails and phone numbers are encrypted in the database (AES-256-GCM; sign-in finds accounts
-by a keyed hash), passwords are hashed with Argon2id, and ten wrong passwords lock an account for 15 minutes.
-Locally the service uses published development keys and says so in its log. A deployment sets its own and
-`RYDEX_STRICT_SECRETS=true`, which refuses to start with any development secret:
-
-| Variable | What | Generate with |
-|---|---|---|
-| `PII_DATA_KEY`, `PII_INDEX_KEY` | personal-data encryption and lookup keys (different) | `openssl rand -base64 32` |
-| `OTP_SECRET` | ride PIN secret, 32+ characters | `openssl rand -base64 32` |
-| `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION` | token signing key pair | `infra/scripts/gen-jwt-keys.sh` |
-| `API_DOCS_ENABLED` | `false` hides Swagger UI on a public deployment | |
-
-Back up `PII_DATA_KEY` with the database: without it the stored emails and phone numbers cannot be read.
-
-Demo accounts (seeded): `admin@rydex.dev`, `rider1..60@rydex.dev`, `driver01..50@rydex.dev`, all with password `Rydex@123`.
-Drivers 01–12 drive ECONOMY, 13–19 COMFORT, 20–23 XL, 24–26 PREMIUM, 27–39 BIKE and 40–50 AUTO. All of them start offline. `rider1` and `driver01` are for
-testing by hand; riders 2–60 and drivers 02–50 are the automated (NPC) accounts the simulator plays.
-
-Every service trusts the same token, so sign in once on ride-service (`POST /api/auth/login`) and paste the
-`accessToken` into **Authorize** on any Swagger page.
-
-| Component | Address (local) |
+| Layer | Stack |
 |---|---|
-| PostgreSQL 16 + PostGIS | `localhost:5432` db `rydex` |
-| Redis 7 | `localhost:6379` |
-| Kafka 4.3 (KRaft) | `localhost:9092` (host), `kafka:29092` (containers) |
-| ride / driver / tracking / payment service | `:8081` / `:8082` / `:8083` / `:8084` |
-| Web app (Vite dev server) | `http://localhost:5173` |
+| Backend | Java 21, Spring Boot 4, Spring Security (RS256/JWKS), Spring Kafka, JPA + Flyway, Resilience4j |
+| Data | PostgreSQL 16 + PostGIS, Redis 7 (GEO, Lua scripts, pub/sub), Apache Kafka 4 (KRaft) |
+| Web | React 19, Vite, TypeScript, Tailwind CSS 4, TanStack Query, Zustand, MapLibre GL, three.js, STOMP |
+| Simulator | Python 3.12 asyncio, OSRM routes |
+| Testing | JUnit 5 + Testcontainers, Vitest + Testing Library, Playwright, pytest, a PowerShell smoke test |
+| Maps | OpenStreetMap data, OpenFreeMap vector tiles, OSRM routing, Nominatim search |
 
-## Repository layout
+## Getting started
+
+**Prerequisites:** Docker, JDK 21, Node.js 22.12+ and Python 3.12+. Maven is not needed; use the wrapper.
+
+```bash
+# 1. Infrastructure: Postgres + PostGIS, Redis and Kafka (topics are created automatically)
+docker compose -f infra/docker-compose.yml up -d
+
+# 2. Build and test the backend (integration tests use Testcontainers)
+./mvnw verify
+
+# 3. Optional: a stable JWT signing key (without it each start uses an ephemeral one)
+bash infra/scripts/gen-jwt-keys.sh
+
+# 4. The four services, one terminal each
+cd services/ride-service && ../../mvnw spring-boot:run
+cd services/driver-service && ../../mvnw spring-boot:run
+cd services/tracking-service && ../../mvnw spring-boot:run
+cd services/payment-service && ../../mvnw spring-boot:run
+
+# 5. The web app, then open http://localhost:5173
+cd frontend && npm install && npm run dev
+
+# 6. Bring the city to life: 40 automated drivers and 30 automated riders
+cd simulator && pip install -r requirements.txt && python simulate.py --city
+```
+
+On Windows, use `.\mvnw.cmd` and PowerShell's `;` in place of `&&`; step 3 needs Git Bash.
+
+Sign in with a demo account (password `Rydex@123`):
+
+| Account | Try |
+|---|---|
+| `rider1@rydex.dev` | book a ride, watch the car come, type the PIN, rate the trip |
+| `driver01@rydex.dev` | go online (with **Simulate driving**) and take rides; real drivers get offers first |
+| `admin@rydex.dev` | the operations map: KPIs, alerts, live rides and ride-along |
+
+The [guide](docs/GUIDE.md) covers the full tour, Razorpay test mode, the smoke test, secrets for a deployment and troubleshooting.
+
+## Testing
+
+| What | Command |
+|---|---|
+| Backend: unit and integration tests | `./mvnw verify` |
+| Web app: lint, types, formatting, unit tests | `cd frontend && npm run lint && npm run typecheck && npm run format:check && npm test` |
+| Simulator | `cd simulator && python -m pytest` |
+| End to end, with the services running | `powershell -File infra/scripts/smoke-test.ps1`, then `cd frontend && npm run e2e` |
+
+[CI](.github/workflows/ci.yml) runs all of them on every push, the end-to-end tests against the full stack.
+
+## Project layout
 
 ```
-libs/common-events/   shared event envelope, event types, topic names, geohash, Redis keys
-libs/messaging/       outbox relay, idempotent consumers, retries + dead-letter topics (@EnableMessaging)
+services/             ride, driver, tracking and payment services (Spring Boot)
+libs/common-events/   shared event envelope, event types, topics, geohash, Redis keys
+libs/messaging/       outbox relay, idempotent consumers, retries and dead-letter topics
 libs/presence/        driver presence in Redis (Lua scripts), shared by driver- and tracking-service
-services/             ride, driver, tracking, payment (Spring Boot)
-frontend/             React web app: rider, driver and admin screens (Vite, Tailwind, MapLibre + three.js, STOMP)
-simulator/            the living city: automated drivers and riders for demos and load (Python asyncio)
-contracts/            JSON Schemas for Kafka events (ride, payment, driver location), the WebSocket (STOMP) API
-infra/                docker compose, PostGIS image, Kafka topic script, smoke test, traffic road builder
-docs/adr/             architecture decision records
+frontend/             React web app: rider, driver and admin screens
+simulator/            the living city: automated drivers and riders (Python asyncio)
+contracts/            JSON Schemas for the Kafka events, the WebSocket (STOMP) API
+infra/                Docker Compose, the PostGIS image, scripts, the smoke test
+docs/                 the guide, the build plan and architecture decision records
 ```
 
-## Decisions
-See [docs/adr](docs/adr). Highlights: custom multi-arch PostGIS image (ADR 3), schema-per-service in one Postgres (ADR 4), single-broker KRaft Kafka (ADR 5), geohash matching (ADR 8), outbox + idempotent consumers (ADR 9), recovery from lost events (ADR 10), STOMP live tracking with Redis fan-out (ADR 11), payments with Razorpay test mode and refunds (ADR 12), the web app and simulator (ADR 13), security hardening and encrypted personal data (ADR 14), vector maps and the realistic 3D mode (ADR 15), the living city with NPC drivers and riders, traffic and 3D scenery (ADR 16), the chase camera and a life-size street (ADR 17), bikes, autos and cabs in one app (ADR 18), riding along from the operations map (ADR 19).
+## Roadmap
+
+- [x] **0–3** Scaffold, ride-service (auth, booking, state machine), driver-service (geohash matching, offers), Kafka event flow
+- [x] **4–5** Live tracking over WebSockets; payments (mock and Razorpay test mode, refunds)
+- [x] **6** Web app (rider, driver, admin), simulator, end-to-end tests
+- [x] Beyond the plan: security hardening, the realistic 3D mode, the living city, ride types, ride-along, free upgrades, ratings
+- [ ] **7** AI ride suggestions (FastAPI + LightGBM)
+- [ ] **8** Production Docker images, Caddy, memory limits
+- [ ] **9** Observability: Sentry, Prometheus, Grafana
+- [ ] **10** Deployment: Oracle Cloud Always Free, HTTPS, Vercel, continuous delivery
+- [ ] **11** Load tests (k6) and a performance report
+- [ ] **12** Final documentation and a demo video
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, conventions and checks, and the [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## License
+
+Rydex is released under the [MIT License](LICENSE).
+
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, available under the [Open Database License](https://opendatacommons.org/licenses/odbl/); this covers the road data in `frontend/public/data/traffic-roads.json`. Vector tiles by [OpenFreeMap](https://openfreemap.org) (OpenMapTiles schema), routes by [OSRM](https://project-osrm.org), place search by [Nominatim](https://nominatim.org).

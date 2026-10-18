@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Boovesh985/rydex/security/advisories/new
+    about: Please report security problems privately, not as an issue.
+  - name: Read the guide
+    url: https://github.com/Boovesh985/rydex/blob/main/docs/GUIDE.md
+    about: Setup, demo accounts, Razorpay test mode and troubleshooting.

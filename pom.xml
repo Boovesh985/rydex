@@ -17,6 +17,35 @@
     <packaging>pom</packaging>
     <name>Rydex</name>
     <description>Uber-style ride hailing with real-time tracking and AI ride suggestions</description>
+    <url>https://github.com/Boovesh985/rydex</url>
+    <inceptionYear>2026</inceptionYear>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/license/mit</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>Boovesh985</id>
+            <name>T BOOVESHWARAN</name>
+            <url>https://github.com/Boovesh985</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <url>https://github.com/Boovesh985/rydex</url>
+        <connection>scm:git:https://github.com/Boovesh985/rydex.git</connection>
+        <developerConnection>scm:git:git@github.com:Boovesh985/rydex.git</developerConnection>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub</system>
+        <url>https://github.com/Boovesh985/rydex/issues</url>
+    </issueManagement>
 
     <modules>
         <module>libs/common-events</module>
