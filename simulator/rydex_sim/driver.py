@@ -122,6 +122,10 @@ class SimDriver:
             last = (me["lastLocation"]["lat"], me["lastLocation"]["lng"])
             if haversine(last, self.s.center) < self.s.radius_m * 1.5:
                 self.pos = last
+        elif me.get("currentRideId"):
+            # the position lives in Redis for 30 s only: after a longer restart, start where the ride
+            # says the car must be, not at a random point (which made a 5-minute trip last an hour)
+            self.pos = await self._ride_position(me["currentRideId"], self.pos)
         if self.s.roads is not None and not self.s.roads.on_land(self.pos):
             # a start (or an old position) off every road, e.g. in the sea: start on a street instead
             self.pos = self._cruise_target()
@@ -166,6 +170,20 @@ class SimDriver:
         except ApiError as e:
             log.warning("%s keeps its %s: %s", self.label, me["vehicleType"], e)
         return me
+
+    async def _ride_position(self, ride_id: str, fallback: LatLng) -> LatLng:
+        """Where a driver whose position was lost should be for this ride: on the way, some way off the
+        pickup; at the pickup or already driving the rider, at the pickup."""
+        try:
+            ride = await self.session.call("GET", f"/api/rides/{ride_id}")
+        except ApiError:
+            return fallback
+        pickup = _pt(ride["pickup"])
+        if ride["status"] == "DRIVER_ASSIGNED":
+            return random_point(pickup, 1500, self.rng)
+        if ride["status"] in ("DRIVER_ARRIVED", "IN_PROGRESS"):
+            return pickup
+        return fallback
 
     async def go_offline(self) -> None:
         if self.online and self.ride_id is None:

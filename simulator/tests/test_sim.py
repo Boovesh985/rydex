@@ -178,3 +178,19 @@ def test_npc_riders_rate_their_trips_once():
     assert len(session.calls) == 1
     method, path, body = session.calls[0]
     assert (method, path) == ("POST", "/api/rides/ride-9/rating") and 1 <= body["stars"] <= 5
+
+
+def test_a_driver_who_lost_their_position_resumes_from_the_ride_not_a_random_point():
+    from rydex_sim.driver import Settings, SimDriver, Stats
+
+    class RideSession:
+        def __init__(self, status):
+            self.status = status
+
+        async def call(self, method, path, body=None):
+            return {"status": self.status, "pickup": {"lat": 13.05, "lng": 80.25}, "drop": {"lat": 13.0, "lng": 80.27}}
+
+    for status, within_m in (("IN_PROGRESS", 1), ("DRIVER_ARRIVED", 1), ("DRIVER_ASSIGNED", 1600)):
+        driver = SimDriver("driver10", RideSession(status), None, Settings(center=CENTRAL), Stats(), random.Random(5))
+        pos = asyncio.run(driver._ride_position("ride-1", CENTRAL))
+        assert haversine(pos, (13.05, 80.25)) <= within_m, status
