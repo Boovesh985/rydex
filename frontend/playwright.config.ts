@@ -1,11 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * One happy-path ride in a real browser against the running backend (the four services on
- * 8081-8084; see README). Reuses a running `npm run dev`, or starts one.
+ * Rides in a real browser against the running backend (the four services on 8081-8084; see
+ * README). Reuses a running `npm run dev`, or starts one.
  */
 export default defineConfig({
   testDir: './e2e',
+  // one at a time: each test is a whole ride, and two software-rendered (SwiftShader) browsers next to
+  // four services and Kafka starved an 8 GB laptop until Kafka fenced its broker
+  workers: 1,
   timeout: 240_000,
   expect: { timeout: 20_000 },
   retries: process.env.CI ? 1 : 0,
