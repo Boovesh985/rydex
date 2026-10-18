@@ -8,6 +8,7 @@ A tour of what runs locally, how to try it, and how to configure it. For setup, 
 - [Try a ride](#try-a-ride)
 - [Realistic 3D](#realistic-3d)
 - [Payments](#payments)
+- [Smart suggestions (AI)](#smart-suggestions-ai)
 - [Checking that it works](#checking-that-it-works)
 - [Security and secrets](#security-and-secrets)
 - [Local addresses](#local-addresses)
@@ -93,6 +94,35 @@ Payments use a mock provider by default (every charge succeeds at once). To use 
 
 The rider pays in Razorpay Checkout from the ride screen ("Pay"); choose Netbanking (any bank, then Success) or a [test card](https://razorpay.com/docs/payments/payments/test-card-details/). Avoid Wallet: Razorpay test mode would not refund a wallet payment. `http://localhost:8084/dev/checkout.html` pays one ride without the web app. See ADR 12.
 
+## Smart suggestions (AI)
+
+With ai-service running, every estimate a rider asks for can come with a **smart suggestion card** above the ride types:
+- **Which ride:** what you usually book (from your last 20 trips), or for a new rider the cheapest ride with a short wait.
+- **When:** booking in 10 or 20 minutes instead, if the surge is predicted to ease enough to be worth the wait ("book at 10:55, save ₹38").
+- **Where:** a short walk (up to about 400 m) to a main road in the next cell, if more free cars there mean a clearly shorter wait.
+- **Which way:** OSRM's other route, if this hour's traffic makes it faster.
+
+It also gives plain reasons and how sure it is. **Use suggestion** picks the ride type and moves the pickup; booking then counts as taking it. **Not now** dismisses it. The operations map's KPIs show how many suggestions riders booked with. Automated riders get none.
+
+Run it next to the four services (Python 3.12+):
+
+```bash
+cd ai-service
+python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt   # Windows: .venv\Scripts\pip
+.venv/bin/python -m uvicorn app.main:app --port 8085                     # Windows: .venv\Scripts\python
+```
+
+Without it nothing changes: ride-service waits at most 300 ms for an answer and books as before.
+
+How it works (ADR 22):
+- **Live data:** ai-service reads ride requests and free drivers from Kafka into Redis, per map cell.
+- **Models:** two LightGBM models predict the wait and the surge. They are trained on synthetic data with Chennai-like patterns: rush hours, weekends, monsoon rain.
+- **Traffic:** free routing has no live traffic, so traffic is a time-of-day multiplier.
+- **Tools:**
+  - `GET http://localhost:8085/model/info` shows the model version and its error (MAE) on held-out data;
+  - `python -m training.train` retrains the models;
+  - `python -m pytest` runs the tests.
+
 ## Checking that it works
 
 With the infrastructure and the four services running, the smoke test prints PASS/FAIL per check:
@@ -101,7 +131,7 @@ With the infrastructure and the four services running, the smoke test prints PAS
 powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
 ```
 
-It runs a full ride across the services over Kafka (book, offer, accept, arrive, OTP start, complete), the same ride live over WebSockets (the offer pushed to the driver, accepted over the socket, notifications and the driver's position streamed to the rider), and payments (the fare charged, a late cancellation fee, an admin refund), then what the web app reads (driver card, routes, admin KPIs) and, if the dev server runs, its proxy to every service. In Razorpay test mode, add `-PayInBrowser`: it opens the test checkout to pay the cancellation fee, then refunds it.
+It runs a full ride across the services over Kafka (book, offer, accept, arrive, OTP start, complete), the same ride live over WebSockets (the offer pushed to the driver, accepted over the socket, notifications and the driver's position streamed to the rider), and payments (the fare charged, a late cancellation fee, an admin refund), then what the web app reads (driver card, routes, admin KPIs) and, if the dev server runs, its proxy to every service. With ai-service running it checks the smart suggestion (shown, booked with, dismissed); without it, that estimates still work. In Razorpay test mode, add `-PayInBrowser`: it opens the test checkout to pay the cancellation fee, then refunds it.
 
 Stop the simulator first: its cruising drivers can win the smoke test's offers.
 
@@ -137,6 +167,7 @@ Back up `PII_DATA_KEY` with the database: without it the stored emails and phone
 | driver-service | `http://localhost:8082/swagger-ui` |
 | tracking-service | `ws://localhost:8083/ws` (STOMP, [contract](../contracts/websocket.md)) |
 | payment-service | `http://localhost:8084/swagger-ui` |
+| ai-service (internal) | `http://localhost:8085/docs`, `/model/info` |
 | Web app (Vite dev server) | `http://localhost:5173` |
 
 ## Troubleshooting
@@ -148,5 +179,7 @@ Get-Content infra\postgres\initdb\01-init.sh -Raw | docker compose -f infra/dock
 ```
 
 **8 GB of RAM.** Running the four services and `mvnw verify` at once can run out of memory: stop the services before a full build.
+
+**No suggestion card?** Check that ai-service answers at `http://localhost:8085/health`. After it has been down for a while, ride-service waits a minute (its circuit breaker) before asking again. `/model/info` says `"liveFeatures": false` until ride requests or driver positions arrive over Kafka (start the simulator).
 
 **Changed something in `libs/`?** `mvnw spring-boot:run` inside a module reads the libraries from `~/.m2`: run `./mvnw install -DskipTests -pl libs/common-events,libs/messaging,libs/presence` first.
