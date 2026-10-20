@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
+import com.rydex.common.RedisKeys;
 import com.rydex.ride.AiStub;
 import com.rydex.ride.IntegrationTest;
 import com.rydex.ride.geo.RouteResult;
@@ -42,6 +43,8 @@ class SuggestionApiTests extends IntegrationTest {
         given(osrm.route(any(), any())).willReturn(List.of(
                 new RouteResult.Alternative(5_000, 900, "fastest_polyline"),
                 new RouteResult.Alternative(4_600, 960, "alt_polyline")));
+        // other tests route the same trip with their own OSRM stub: drop their cached route (one hour TTL)
+        redis.delete(redis.keys(RedisKeys.routeCache("*")));
         breaker().reset();
     }
 
