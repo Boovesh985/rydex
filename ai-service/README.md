@@ -27,8 +27,9 @@ Settings (environment): `REDIS_HOST` / `REDIS_PORT` (127.0.0.1:6379), `KAFKA_BOO
 - `app/model.py`: the two LightGBM regressors (wait minutes, surge) and their feature row.
 - `app/engine.py`: the suggestion itself: ride type from history, best pickup time, a pickup spot nearby, route choice, reasons.
 - `app/calendar.py`: Chennai time, holidays, the daily curve and the time-of-day traffic multiplier.
+- `app/traffic.py`: the city's simulated traffic on the map's roads (same formula as the web app and the simulator), to time each route.
 - `training/`:
   - `generate.py`: synthetic bookings with rush hours, off days, monsoon rain and busy areas;
   - `train.py`: training; writes `models/` and `models/metrics.json`.
 
-The models learn a synthetic city, and traffic is a time-of-day model (free routing has no live traffic). Every suggestion shown is logged by ride-service (`ai_suggestion_log`), together with whether the rider booked with it, for retraining on real feedback.
+The models learn a synthetic city, and traffic is the city's simulated traffic (free routing has no live traffic). Every suggestion shown is logged by ride-service (`ai_suggestion_log`), together with whether the rider booked with it, for retraining on real feedback.

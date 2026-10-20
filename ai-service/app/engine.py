@@ -6,7 +6,8 @@
    and supply; a later time is suggested only when it saves a worthwhile amount.
 3. Pickup point: a spot on a main road in a neighbouring cell, when more free cars around it make the
    wait clearly shorter, walk included.
-4. Route: OSRM's alternatives scored with the time-of-day traffic multiplier.
+4. Route: OSRM's alternatives timed through the city's simulated traffic (the map's traffic layer),
+   or, for routes without a shape, with the time-of-day traffic multiplier.
 5. Reasons: plain-language templates, no LLM.
 """
 
@@ -22,6 +23,7 @@ from .model import RIDE_TYPES, Predictor, feature_row
 from .roads import RoadPoints
 from .schemas import (AlternativePickup, BestPickupTime, PastRide, RideOption, RouteChoice, RouteOption,
                       SuggestionRequest, SuggestionResponse)
+from .traffic import TrafficRoads, decode_polyline
 
 LABEL = {"BIKE": "Bike", "AUTO": "Auto", "ECONOMY": "Economy", "COMFORT": "Comfort", "XL": "XL", "PREMIUM": "Premium"}
 BUDGET = ("BIKE", "AUTO", "ECONOMY")
@@ -60,6 +62,10 @@ class Preference:
         return 1.5 if self.price_sensitive else 4.0
 
 
+def _a(label: str) -> str:
+    return ("an " if label[0] in "AEIOU" or label == "XL" else "a ") + label
+
+
 def preference(history: list[PastRide]) -> Preference:
     recent = history[:20]
     if len(recent) < MIN_HISTORY:
@@ -90,8 +96,12 @@ def choose_type(options: list[RideOption], pref: Preference, distance_km: float)
             o = by_type[pref.favourite]
             return o, f"You usually ride {fav}" + (f", and one is {o.etaMinutes} min away" if o.etaMinutes is not None else "")
         rank = RIDE_TYPES.index(pref.favourite)
+        # a class the rider would take instead, if one is on its way, even if a little further out
+        usable = [o for o in options if o.etaMinutes is not None and not (o.rideType == "BIKE" and distance_km > BIKE_MAX_KM)]
+        similar = ([o for o in pool if _comparable(pref.favourite, o.rideType)]
+                   or [o for o in usable if _comparable(pref.favourite, o.rideType)] or pool)
         # the closest class to the usual one; a tie goes the way the rider leans on price
-        o = min(pool, key=lambda o: (abs(RIDE_TYPES.index(o.rideType) - rank),
+        o = min(similar, key=lambda o: (abs(RIDE_TYPES.index(o.rideType) - rank),
                                      RIDE_TYPES.index(o.rideType) * (1 if pref.price_sensitive else -1)))
         when = f" {o.etaMinutes} min away" if o.etaMinutes is not None else ""
         return o, f"No {fav} is close right now; {LABEL[o.rideType]} is the nearest match{when}"
@@ -102,13 +112,20 @@ def choose_type(options: list[RideOption], pref: Preference, distance_km: float)
     return o, f"{LABEL[o.rideType]} is the lowest fare for this trip"
 
 
+def _comparable(usual: str, other: str) -> bool:
+    """A class the rider would take instead: any bigger one, or one step down, but never a bike in place of a seat."""
+    step = RIDE_TYPES.index(other) - RIDE_TYPES.index(usual)
+    return step >= -1 and (other != "BIKE" or usual == "BIKE")
+
+
 def sooner(chosen: RideOption, options: list[RideOption], pref: Preference, distance_km: float) -> RideOption | None:
-    """A ride at a similar or lower fare that comes at least SOONER_MIN minutes sooner, if any."""
+    """A comparable ride at a similar or lower fare that comes at least SOONER_MIN minutes sooner, if any."""
     if chosen.etaMinutes is None:
         return None
     limit = chosen.fare * (1.0 if pref.price_sensitive else SOONER_FARE)
     faster = [o for o in _eligible(options, distance_km)
-              if o.etaMinutes is not None and o.etaMinutes <= chosen.etaMinutes - SOONER_MIN and o.fare <= limit]
+              if o.etaMinutes is not None and o.etaMinutes <= chosen.etaMinutes - SOONER_MIN and o.fare <= limit
+              and _comparable(chosen.rideType, o.rideType)]
     return min(faster, key=lambda o: (o.etaMinutes, o.fare)) if faster else None
 
 
@@ -121,24 +138,37 @@ def route_minutes(route: RouteOption, traffic: float) -> float:
     return route.durationS / 60 * (1 + (traffic - 1) * (0.6 + 0.8 * main_roads))
 
 
-def choose_route(routes: list[RouteOption], traffic: float) -> tuple[RouteChoice | None, str | None]:
+def traffic_minutes(routes: list[RouteOption], city: TrafficRoads | None, t: float) -> list[float] | None:
+    """Each route timed through the traffic on its roads at epoch t; None unless every route has a shape."""
+    if city is None or not len(city) or any(not r.polyline for r in routes):
+        return None
+    try:
+        timed = [city.drive_minutes(decode_polyline(r.polyline), r.durationS, t) for r in routes]
+    except (IndexError, ValueError):  # not a polyline after all
+        return None
+    return None if any(m is None for m in timed) else timed
+
+
+def choose_route(routes: list[RouteOption], traffic: float, city: TrafficRoads | None = None,
+                 t: float = 0.0) -> tuple[RouteChoice | None, str | None]:
     if not routes:
         return None, None
-    scored = [route_minutes(r, traffic) for r in routes]
+    scored = traffic_minutes(routes, city, t) or [route_minutes(r, traffic) for r in routes]
     best = min(range(len(routes)), key=lambda i: scored[i])
     saved = scored[0] - scored[best]
     if best != 0 and saved >= 2 and saved >= 0.05 * scored[0]:
         return (RouteChoice(choice=f"alternative_{best}", predictedDurationMin=round(scored[best]),
                             polyline=routes[best].polyline),
-                f"In this hour's traffic the other route is predicted at {round(scored[best])} min, "
-                f"{round(saved)} min faster than the usual one")
+                f"Traffic is heavy on the usual way: the other route is predicted at {round(scored[best])} min, "
+                f"{round(saved)} min faster")
     return RouteChoice(choice="fastest", predictedDurationMin=round(scored[0])), None
 
 
 class Engine:
-    def __init__(self, predictor: Predictor, roads: RoadPoints):
+    def __init__(self, predictor: Predictor, roads: RoadPoints, city: TrafficRoads | None = None):
         self.predictor = predictor
         self.roads = roads
+        self.city = city
 
     def suggest(self, req: SuggestionRequest, live: Live) -> SuggestionResponse:
         at = req.requestedAt
@@ -165,7 +195,7 @@ class Engine:
                 highlights.append("BETTER_PRICE")
         reasons.append(why_type)
         if option.upgradeTo:
-            reasons.append(f"It may come as a {LABEL[option.upgradeTo]} at the {LABEL[option.rideType]} fare")
+            reasons.append(f"It may come as {_a(LABEL[option.upgradeTo])} at the {LABEL[option.rideType]} fare")
             highlights.append("BETTER_PRICE")
 
         # demand and supply around the pickup now: ride-service's own counts, else the feature store's
@@ -225,7 +255,7 @@ class Engine:
             reasons.append(why)
             highlights.append("SHORTER_WAIT")
 
-        route, why_route = choose_route(req.routes, traffic)
+        route, why_route = choose_route(req.routes, traffic, self.city, at.timestamp())
         if why_route:
             reasons.append(why_route)
             highlights.append("SMARTER_ROUTE")
@@ -282,6 +312,6 @@ class Engine:
         direction = geo.compass(geo.bearing(here, q))
         return (AlternativePickup(lat=round(q[0], 6), lng=round(q[1], 6), walkMeters=walk,
                                   predictedWaitMin=max(1, round(effective))),
-                f"Walk {walk} m {direction} to a main road: a {LABEL[option.rideType]} is predicted there in "
+                f"Walk {walk} m {direction} to a main road: {_a(LABEL[option.rideType])} is predicted there in "
                 f"{max(1, round(effective))} min instead of {max(1, round(wait_now))}")
 

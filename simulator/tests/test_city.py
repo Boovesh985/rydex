@@ -16,7 +16,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 NIGHT = datetime(2026, 10, 15, 3, 0, tzinfo=IST).timestamp()
 RUSH = datetime(2026, 10, 15, 18, 45, tzinfo=IST).timestamp()
 
-# shared with frontend/src/map/traffic.test.ts: both implementations must give the same numbers
+# shared with frontend/src/map/traffic.test.ts and ai-service/tests/test_traffic.py: all three must give the same numbers
 VECTORS = [
     (0.1234, 0, 1792065600, 0.4180877279789025),
     (0.8765, 1, 1792097100, 0.27399949864662293),

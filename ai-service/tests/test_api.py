@@ -59,7 +59,7 @@ def test_rejects_a_request_without_options(client):
 def test_model_info_reports_the_metrics_and_whether_live_features_flow(client, store):
     info = client.get("/model/info").json()
     assert info["wait"]["mae"] > 0 and info["surge"]["mae"] > 0
-    assert info["version"] and info["liveFeatures"] is False and info["roadPoints"] > 1000
+    assert info["version"] and info["liveFeatures"] is False and info["roadPoints"] > 1000 and info["trafficSegments"] > 1000
     location = {"eventId": "e", "driverId": "d", "lat": 13.08, "lng": 80.27, "status": "AVAILABLE",
                 "recordedAt": datetime.now(timezone.utc).isoformat()}
     client.portal.call(consumer.handle, store, consumer.DRIVER_LOCATION, json.dumps(location))

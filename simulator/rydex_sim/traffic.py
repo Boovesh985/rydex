@@ -1,5 +1,6 @@
 """Simulated city traffic (ADR 0016). The same formula runs in the web app (frontend/src/map/traffic.ts),
-so the jams a simulated driver slows down in are the red stretches people see on the map.
+so the jams a simulated driver slows down in are the red stretches people see on the map, and in
+ai-service (app/traffic.py), which times the suggested route through them.
 
 Each road segment of frontend/public/data/traffic-roads.json has a road class and a stable hash in
 [0, 1). Congestion follows Chennai's day (morning and evening rush, a quieter night), is heavier on

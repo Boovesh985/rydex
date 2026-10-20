@@ -198,3 +198,34 @@ def test_a_ride_much_sooner_at_no_higher_fare_beats_the_usual_one(engine):
     assert engine.suggest(request(history=["ECONOMY"] * 5, etas=(12, 9, 12, 9, 9, 8)), Live()).recommendedRideType == "ECONOMY"
     assert engine.suggest(request(history=["BIKE"] * 5, etas=(12, 12, 3, 9, 9, 8)), Live()).recommendedRideType == "BIKE"
 
+
+
+def test_a_sooner_ride_stays_in_a_comparable_class(engine):
+    # a Comfort regular is not sent a bike or an auto, however soon; one class down is fine
+    s = engine.suggest(request(history=["COMFORT"] * 5, etas=(2, 3, 12, 12, 12, 12)), Live())
+    assert s.recommendedRideType == "COMFORT"
+    s = engine.suggest(request(history=["COMFORT"] * 5, etas=(2, 3, 5, 12, 12, 12)), Live())
+    assert s.recommendedRideType == "ECONOMY"
+    # an Auto regular is not moved to a bike either
+    assert engine.suggest(request(history=["AUTO"] * 5, etas=(2, 12, 12, 12, 12, 12)), Live()).recommendedRideType == "AUTO"
+
+
+def test_reasons_use_an_before_a_vowel():
+    cell, pickup, road = edge_of_cell()
+    north = geo.neighbours(cell)[0]
+    live = Live(pickup=area(cell, 1), neighbours={n: area(n, 14 if n == north else 1) for n in geo.neighbours(cell)},
+                fresh=True)
+    s = Engine(FakeModel(), RoadPoints([road])).suggest(
+        request(pickup=pickup, etas=(None, 9, None, None, None, None), supply=1), live)
+    assert s.recommendedRideType == "AUTO"
+    assert any(": an Auto is predicted there" in r for r in s.reasons)
+    up = Engine(FakeModel(), RoadPoints([])).suggest(request(history=["ECONOMY"] * 5, upgrade="COMFORT"), Live())
+    assert "It may come as a Comfort at the Economy fare" in up.reasons
+
+
+def test_without_the_usual_class_nearby_a_seat_is_suggested_before_a_bike(engine):
+    s = engine.suggest(request(history=["ECONOMY"] * 5, etas=(3, 15, None, 15, 15, 15)), Live())
+    assert s.recommendedRideType == "AUTO"
+    assert "No Economy is close right now; Auto is the nearest match 15 min away" in s.reasons
+    # nothing else on its way at all: the bike it is
+    assert engine.suggest(request(history=["ECONOMY"] * 5, etas=(3, None, None, None, None, None)), Live()).recommendedRideType == "BIKE"

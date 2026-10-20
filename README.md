@@ -41,7 +41,7 @@ Everything runs locally with Docker, and the deployment plan uses free tiers onl
   - the ride you usually take;
   - booking 10 or 20 minutes later when the surge is predicted to ease;
   - a short walk to a spot with more free cars;
-  - the route that is faster in this hour's traffic.
+  - the route that is faster through the traffic on the map right now.
 - Plain reasons, "Use suggestion" in one tap, and every suggestion logged with whether the rider booked with it.
 - Two LightGBM models (wait time, surge) on live demand and supply from Kafka, trained on synthetic Chennai-like data. No paid AI service.
 
@@ -208,4 +208,4 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the setup
 
 Rydex is released under the [MIT License](LICENSE).
 
-Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, available under the [Open Database License](https://opendatacommons.org/licenses/odbl/); this covers the road data in `frontend/public/data/traffic-roads.json`. Vector tiles by [OpenFreeMap](https://openfreemap.org) (OpenMapTiles schema), routes by [OSRM](https://project-osrm.org), place search by [Nominatim](https://nominatim.org). The AI suggestions learn from synthetic data, and traffic is a time-of-day model, since free routing has no live traffic.
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, available under the [Open Database License](https://opendatacommons.org/licenses/odbl/); this covers the road data in `frontend/public/data/traffic-roads.json`. Vector tiles by [OpenFreeMap](https://openfreemap.org) (OpenMapTiles schema), routes by [OSRM](https://project-osrm.org), place search by [Nominatim](https://nominatim.org). The AI suggestions learn from synthetic data, and traffic is simulated (the same model on the map, in the simulator and in the route choice), since free routing has no live traffic.

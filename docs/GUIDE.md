@@ -100,7 +100,7 @@ With ai-service running, every estimate a rider asks for can come with a **smart
 - **Which ride:** what you usually book (from your last 20 trips), or for a new rider the cheapest ride with a short wait.
 - **When:** booking in 10 or 20 minutes instead, if the surge is predicted to ease enough to be worth the wait ("book at 10:55, save ₹38").
 - **Where:** a short walk (up to about 400 m) to a main road in the next cell, if more free cars there mean a clearly shorter wait.
-- **Which way:** OSRM's other route, if this hour's traffic makes it faster.
+- **Which way:** OSRM's other route, if it is faster through the traffic you see on the map right now (red stretches slow a route down).
 
 It also gives plain reasons and how sure it is. **Use suggestion** picks the ride type and moves the pickup; booking then counts as taking it. **Not now** dismisses it. The operations map's KPIs show how many suggestions riders booked with. Automated riders get none.
 

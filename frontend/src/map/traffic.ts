@@ -2,7 +2,8 @@ import type { FeatureCollection, LineString } from 'geojson';
 
 /**
  * Simulated city traffic (ADR 0016). The same formula runs in the simulator
- * (simulator/rydex_sim/traffic.py), so the red stretches on the map are where its cars crawl.
+ * (simulator/rydex_sim/traffic.py), so the red stretches on the map are where its cars crawl, and in
+ * ai-service (app/traffic.py), which times the suggested route through them.
  *
  * Each segment of /data/traffic-roads.json (Chennai's main roads from OpenStreetMap, cut into
  * ~450 m pieces) has a road class and a stable hash in [0, 1). Congestion follows Chennai's day

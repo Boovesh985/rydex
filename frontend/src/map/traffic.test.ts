@@ -5,7 +5,7 @@ import { band, demand, istHour, level, trafficAt } from './traffic';
 const NIGHT = Date.parse('2026-10-15T03:00:00+05:30') / 1000;
 const RUSH = Date.parse('2026-10-15T18:45:00+05:30') / 1000;
 
-// shared with simulator/tests/test_city.py: both implementations must give the same numbers
+// shared with simulator/tests/test_city.py and ai-service/tests/test_traffic.py: all three must give the same numbers
 const VECTORS: [number, number, number, number][] = [
   [0.1234, 0, 1792065600, 0.4180877279789025],
   [0.8765, 1, 1792097100, 0.27399949864662293],

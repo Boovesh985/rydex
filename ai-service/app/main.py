@@ -21,6 +21,7 @@ from .engine import Engine, Live
 from .model import MODELS_DIR, Predictor, feature_row
 from .roads import RoadPoints
 from .schemas import SuggestionRequest, SuggestionResponse
+from .traffic import TrafficRoads
 
 log = logging.getLogger("ai-service")
 LATENCY = Histogram("ai_suggestion_latency_seconds", "Time to build one suggestion",
@@ -53,7 +54,7 @@ def create_app(store: features.FeatureStore | None = None, kafka: str | None = N
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.predictor = load_predictor(Path(os.environ.get("MODELS_DIR", MODELS_DIR)))
-        app.state.engine = Engine(app.state.predictor, RoadPoints.load())
+        app.state.engine = Engine(app.state.predictor, RoadPoints.load(), TrafficRoads.load())
         # warm up: the first prediction loads LightGBM's code paths, too slow for ride-service's 300 ms
         app.state.predictor.predict([feature_row(12.0, 2, False, 4.0, 6.0, "ECONOMY", 8.0, 1.2)])
         redis = None
@@ -105,7 +106,8 @@ def create_app(store: features.FeatureStore | None = None, kafka: str | None = N
             fresh = features.fresh(await asyncio.wait_for(app.state.store.last_event_at(), FEATURES_BUDGET_S))
         except Exception:
             fresh = False
-        return {**app.state.predictor.info, "liveFeatures": fresh, "roadPoints": len(app.state.engine.roads)}
+        return {**app.state.predictor.info, "liveFeatures": fresh, "roadPoints": len(app.state.engine.roads),
+                "trafficSegments": len(app.state.engine.city)}
 
     @app.get("/health")
     async def health() -> dict:
