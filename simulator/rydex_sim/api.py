@@ -147,6 +147,43 @@ class Session:
         raise AssertionError("unreachable")
 
 
+# one cheap request per service; any answer below 500 means it is up (401 without a token is fine)
+READY_PATHS = (
+    "/api/me",
+    "/api/drivers/me",
+    "/api/tracking/rides/00000000-0000-0000-0000-000000000000/path",
+    "/api/payments/config",
+)
+
+
+async def wait_for_backend(http: httpx.AsyncClient, endpoints: Endpoints, timeout_s: float = 300.0,
+                           interval_s: float = 2.0) -> bool:
+    """Holds the city back until every service answers. After a reboot Docker starts every container at
+    once, and sign-ins sent before the services are up only fail (Caddy answers 502). False on timeout."""
+    deadline = time.monotonic() + timeout_s
+    waiting = list(READY_PATHS)
+    announced = False
+    while True:
+        still = []
+        for path in waiting:
+            try:
+                up = (await http.get(endpoints.url(path), timeout=5)).status_code < 500
+            except httpx.HTTPError:
+                up = False
+            if not up:
+                still.append(path)
+        waiting = still
+        if not waiting:
+            return True
+        if time.monotonic() >= deadline:
+            log.warning("services still not answering after %.0f s (%s): starting anyway", timeout_s, ", ".join(waiting))
+            return False
+        if not announced:
+            log.info("waiting for the services to answer (%s)...", ", ".join(waiting))
+            announced = True
+        await asyncio.sleep(interval_s)
+
+
 def _detail(res: httpx.Response) -> str:
     try:
         body = res.json()

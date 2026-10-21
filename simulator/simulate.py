@@ -21,7 +21,7 @@ import sys
 
 import httpx
 
-from rydex_sim.api import Api, AuthBudget, Endpoints, Session
+from rydex_sim.api import Api, AuthBudget, Endpoints, Session, wait_for_backend
 from rydex_sim.driver import Settings, SimDriver, Stats
 from rydex_sim.otp import DEV_SECRET
 from rydex_sim.rider import PinBoard, RiderSettings, RiderStats, SimRider
@@ -136,6 +136,7 @@ async def run(args: argparse.Namespace) -> None:
     rng = random.Random(args.seed)
     limits = httpx.Limits(max_connections=max(20, args.drivers * 2 + args.riders))
     async with httpx.AsyncClient(timeout=15, limits=limits) as http:
+        await wait_for_backend(http, endpoints)
         api = Api(endpoints, budget, http)
         drivers = [
             SimDriver(f"driver{n:02d}", Session(api, f"driver{n:02d}@rydex.dev", args.password), endpoints, settings,

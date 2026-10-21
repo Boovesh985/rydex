@@ -3,7 +3,9 @@ import random
 
 import pytest
 
-from rydex_sim.api import AuthBudget, Endpoints
+import httpx
+
+from rydex_sim.api import READY_PATHS, AuthBudget, Endpoints, wait_for_backend
 from rydex_sim.geo import along, bearing, decode_polyline, haversine, offset, path_length, random_point
 from rydex_sim.otp import otp_for
 from rydex_sim.stomp import Frame
@@ -194,3 +196,32 @@ def test_a_driver_who_lost_their_position_resumes_from_the_ride_not_a_random_poi
         driver = SimDriver("driver10", RideSession(status), None, Settings(center=CENTRAL), Stats(), random.Random(5))
         pos = asyncio.run(driver._ride_position("ride-1", CENTRAL))
         assert haversine(pos, (13.05, 80.25)) <= within_m, status
+
+
+def test_the_city_waits_until_every_service_answers():
+    calls = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls[path] = calls.get(path, 0) + 1
+        if path == "/api/drivers/me" and calls[path] <= 2:
+            return httpx.Response(502)  # driver-service still starting: Caddy answers 502
+        return httpx.Response(401 if path != "/api/payments/config" else 200)
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await wait_for_backend(http, Endpoints("http://caddy"), timeout_s=5, interval_s=0.01)
+
+    assert asyncio.run(go()) is True
+    assert calls["/api/drivers/me"] == 3
+    assert calls["/api/me"] == 1  # a service that answered is not asked again
+    assert set(calls) == set(READY_PATHS)
+
+
+def test_a_backend_that_never_answers_does_not_hold_the_city_forever():
+    async def go():
+        transport = httpx.MockTransport(lambda request: httpx.Response(503))
+        async with httpx.AsyncClient(transport=transport) as http:
+            return await wait_for_backend(http, Endpoints("http://caddy"), timeout_s=0.05, interval_s=0.01)
+
+    assert asyncio.run(go()) is False
