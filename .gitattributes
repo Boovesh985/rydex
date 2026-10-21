@@ -4,3 +4,4 @@ mvnw text eol=lf
 *.cmd text eol=crlf
 Dockerfile text eol=lf
 Caddyfile text eol=lf
+.dockerignore text eol=lf
