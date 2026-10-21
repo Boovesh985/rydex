@@ -17,7 +17,7 @@ vi.mock('../../api/endpoints', () => ({
   paymentsApi: { forRide: vi.fn(), verify: vi.fn(), retry: vi.fn() },
 }));
 
-// Leaflet needs a real layout engine; the map is covered by the browser end-to-end test
+// MapLibre needs WebGL and a real layout engine; the map is covered by the browser end-to-end test
 vi.mock('../../map/MapView', () => ({
   BaseMap: ({ children }: { children: React.ReactNode }) => <div data-testid="map">{children}</div>,
   PickupPin: () => null,

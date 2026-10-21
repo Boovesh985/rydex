@@ -105,6 +105,19 @@ What the production file changes, compared with local:
 | Restart one service | `docker compose restart driver-service` |
 | A database shell | `docker compose exec postgres psql -U rydex -d rydex` |
 
+### Data that grows
+
+The living city books about 4,000 rides a day around the clock.
+- **Trip paths** (`tracking.driver_location_history`) grow fastest: about 500,000 points, roughly 140 MB, a day. tracking-service deletes paths older than `HISTORY_RETENTION` (default `30d`) every 10 minutes. Older trips then show no path on their trip page.
+- **Outbox rows and processed-event markers** are deleted after 14 days, and refresh tokens a day after they expire.
+- **Rides, payments and suggestions** are kept: they are the business record.
+
+Check the largest tables with:
+
+```bash
+docker compose exec postgres psql -U rydex -d rydex -c "select schemaname||'.'||relname, pg_size_pretty(pg_total_relation_size(relid)) from pg_stat_user_tables order by pg_total_relation_size(relid) desc limit 8"
+```
+
 ## When something breaks
 
 - **A container keeps restarting:** run `docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' rydex-ride-service-1`.
