@@ -1,0 +1,242 @@
+# Production stack (ADR 0023): the images CI publishes to GHCR, restart policies, memory limits and
+# hardened containers. Only Caddy has public ports (80, 443); Postgres, Redis, Kafka and the services
+# are reachable on the internal network only. Settings come from infra/.env (copy infra/.env.example).
+#   docker compose -f infra/docker-compose.prod.yml pull
+#   docker compose -f infra/docker-compose.prod.yml up -d
+#   add --profile city for the living city (simulated drivers and riders keep the demo busy)
+# Memory budget: docs/runbook.md.
+name: rydex
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-healthcheck-defaults: &hc
+  interval: 10s
+  timeout: 5s
+  retries: 10
+
+x-infra: &infra
+  restart: unless-stopped
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+
+# app containers: read-only root, no Linux capabilities, no privilege gain, scratch space in memory
+x-hardened: &hardened
+  restart: unless-stopped
+  logging: *logging
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-spring-env: &spring-env
+  DB_HOST: postgres
+  REDIS_HOST: redis
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  JWT_JWK_SET_URI: http://ride-service:8081/.well-known/jwks.json
+  FORWARD_HEADERS_STRATEGY: framework
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in infra/.env}
+  API_DOCS_ENABLED: "false"
+
+x-spring-deps: &spring-deps
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  kafka-init:
+    condition: service_completed_successfully
+
+services:
+  postgres:
+    <<: *infra
+    image: ghcr.io/boovesh985/rydex-postgres:16-3
+    environment:
+      POSTGRES_DB: rydex
+      POSTGRES_USER: rydex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+      RIDE_DB_PASSWORD: ${RIDE_DB_PASSWORD:?}
+      DRIVER_DB_PASSWORD: ${DRIVER_DB_PASSWORD:?}
+      TRACKING_DB_PASSWORD: ${TRACKING_DB_PASSWORD:?}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?}
+      AI_DB_PASSWORD: ${AI_DB_PASSWORD:?}
+    # sized for a 1 GB container: four services with up to 10 connections each
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "effective_cache_size=512MB", "-c", "max_connections=80",
+              "-c", "work_mem=4MB", "-c", "maintenance_work_mem=64MB"]
+    shm_size: 256m
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "pg_isready -U rydex -d rydex"]
+    mem_limit: 1g
+
+  redis:
+    <<: *infra
+    image: redis:7-alpine
+    # noeviction: GEO sets, locks and offers must never be silently evicted.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "200mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "redis-cli", "ping"]
+    mem_limit: 256m
+
+  kafka:
+    <<: *infra
+    image: apache/kafka:4.3.1
+    environment:
+      CLUSTER_ID: U10ni5OXT5eHT2PW-vW1EQ
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # a week of events is plenty for a demo city and keeps the disk small
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: 30000
+      KAFKA_BROKER_HEARTBEAT_INTERVAL_MS: 3000
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx64m /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 > /dev/null 2>&1"]
+      start_period: 30s
+    mem_limit: 1536m
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    logging: *logging
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    volumes:
+      - ./kafka/create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["/bin/bash", "/create-topics.sh"]
+    restart: "no"
+
+  ride-service:
+    <<: *hardened
+    image: ghcr.io/boovesh985/rydex-ride-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${RIDE_DB_PASSWORD:?}
+      AI_BASE_URL: http://ai-service:8085
+      # refuse development secrets: OTP, personal-data keys, an ephemeral JWT key (ADR 0014)
+      RYDEX_STRICT_SECRETS: "true"
+      OTP_SECRET: ${OTP_SECRET:?set OTP_SECRET in infra/.env}
+      PII_DATA_KEY: ${PII_DATA_KEY:?set PII_DATA_KEY in infra/.env}
+      PII_INDEX_KEY: ${PII_INDEX_KEY:?set PII_INDEX_KEY in infra/.env}
+      # infra/keys/jwt-*.pem, readable by uid 10001 (docs/runbook.md)
+      JWT_PRIVATE_KEY_LOCATION: file:/keys/jwt-private.pem
+      JWT_PUBLIC_KEY_LOCATION: file:/keys/jwt-public.pem
+    volumes:
+      - ./keys:/keys:ro
+    mem_limit: 768m
+
+  driver-service:
+    <<: *hardened
+    image: ghcr.io/boovesh985/rydex-driver-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${DRIVER_DB_PASSWORD:?}
+    mem_limit: 768m
+
+  tracking-service:
+    <<: *hardened
+    image: ghcr.io/boovesh985/rydex-tracking-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${TRACKING_DB_PASSWORD:?}
+      RIDE_SERVICE_URL: http://ride-service:8081
+      DRIVER_SERVICE_URL: http://driver-service:8082
+    mem_limit: 768m
+
+  payment-service:
+    <<: *hardened
+    image: ghcr.io/boovesh985/rydex-payment-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      PAYMENT_DEV_PAGES: "false"
+    mem_limit: 768m
+
+  ai-service:
+    <<: *hardened
+    image: ghcr.io/boovesh985/rydex-ai-service:${RYDEX_TAG:-latest}
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    mem_limit: 512m
+
+  caddy:
+    <<: *hardened
+    image: ghcr.io/boovesh985/rydex-caddy:${RYDEX_TAG:-latest}
+    depends_on: [ride-service, driver-service, tracking-service, payment-service]
+    environment:
+      # the public name, e.g. rydex.duckdns.org: Caddy fetches and renews its HTTPS certificate
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in infra/.env}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - caddydata:/data
+      - caddyconfig:/config
+    mem_limit: 128m
+
+  simulator:
+    <<: *hardened
+    profiles: [city]
+    image: ghcr.io/boovesh985/rydex-simulator:${RYDEX_TAG:-latest}
+    depends_on:
+      caddy:
+        condition: service_healthy
+      ride-service:
+        condition: service_healthy
+      driver-service:
+        condition: service_healthy
+      tracking-service:
+        condition: service_healthy
+    environment:
+      RYDEX_API: http://caddy
+      # NPC drivers derive the trip PIN like ride-service does
+      OTP_SECRET: ${OTP_SECRET:?}
+    stop_grace_period: 30s
+    mem_limit: 256m
+
+volumes:
+  pgdata:
+  redisdata:
+  kafkadata:
+  caddydata:
+  caddyconfig:

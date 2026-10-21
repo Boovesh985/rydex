@@ -1,0 +1,108 @@
+# Rydex edge (ADR 0013, 0023): the only container with public ports.
+# SITE_ADDRESS is the public name (e.g. rydex.duckdns.org: Caddy gets and renews its Let's Encrypt
+# certificate itself) or, locally, :80 for plain HTTP.
+#
+# /api/* goes to a service by path prefix, the same table as the Vite proxy (frontend/vite.config.ts),
+# the simulator (simulator/rydex_sim/api.py) and the smoke test; frontend/src/edge.test.ts keeps the
+# first two in step. The most specific prefix wins (Caddy orders handle blocks by path length).
+# /ws is tracking-service's STOMP endpoint (WebSocket upgrade). Anything else is the web app.
+# Actuator, Swagger and ai-service are never routed: they stay on the internal network.
+{
+	# the admin API only inside the container
+	admin 127.0.0.1:2019
+}
+
+(proxy) {
+	reverse_proxy {args[0]} {
+		# a slow or restarting service: answer 502 within seconds instead of hanging the client
+		lb_try_duration 5s
+		lb_try_interval 500ms
+	}
+}
+
+(rydex) {
+	encode zstd gzip
+
+	request_body {
+		max_size 1MB
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=63072000; includeSubDomains"
+
+	handle /api/admin/payments* {
+		import proxy payment-service:8084
+	}
+	handle /api/admin/stats* {
+		import proxy ride-service:8081
+	}
+	handle /api/admin/demand* {
+		import proxy ride-service:8081
+	}
+	handle /api/admin* {
+		import proxy driver-service:8082
+	}
+	handle /api/payments* {
+		import proxy payment-service:8084
+	}
+	handle /api/drivers* {
+		import proxy driver-service:8082
+	}
+	handle /api/tracking* {
+		import proxy tracking-service:8083
+	}
+	handle /api* {
+		import proxy ride-service:8081
+	}
+	handle /ws* {
+		reverse_proxy tracking-service:8083
+	}
+
+	# the web app (the same build Vercel serves), with Vercel's headers (frontend/vercel.json)
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@page not path /assets/*
+		header @page Cache-Control "no-cache"
+		header {
+			X-Frame-Options DENY
+			Permissions-Policy "geolocation=(self), camera=(), microphone=(), usb=(), payment=(self \"https://checkout.razorpay.com\")"
+			Cross-Origin-Opener-Policy same-origin-allow-popups
+		}
+		header Content-Security-Policy "default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tiles.openfreemap.org https://*.razorpay.com; connect-src 'self' https://tiles.openfreemap.org https://*.razorpay.com; worker-src 'self' blob:; child-src blob:; frame-src https://api.razorpay.com https://checkout.razorpay.com; form-action 'self' https://api.razorpay.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+		# a second policy, over HTTPS only: on plain-HTTP localhost it would break every request.
+		# Deferred, or the policy set above (applied after it) would replace it.
+		header @https {
+			+Content-Security-Policy upgrade-insecure-requests
+			defer
+		}
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle_errors 502 503 504 {
+		header Content-Type application/problem+json
+		respond `{"title":"Bad Gateway","status":502,"detail":"The service behind this path is not answering. Try again in a moment."}` 502
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	import rydex
+}
+
+# containers on the internal network (the living city) reach the same routes without TLS;
+# /healthz is the container's health check. Nobody outside the private network gets this plain-HTTP site.
+http://caddy {
+	@outside not remote_ip private_ranges
+	abort @outside
+	handle /healthz {
+		respond OK
+	}
+	import rydex
+}

@@ -1,12 +1,48 @@
-# Local development stack.
+# Local stack. Ports bind to 127.0.0.1 only.
 #   docker compose -f infra/docker-compose.yml up -d
-# Ports bind to 127.0.0.1 only. Application services are added phase by phase.
+#       infra only (Postgres, Redis, Kafka): run the services from your IDE or with mvnw
+#   docker compose -f infra/docker-compose.yml --profile app up -d --build
+#       the whole stack in containers, under memory limits; the web app on http://localhost:8080
+#   add --profile city for the living city (simulated drivers and riders) as well
+# The production file (docker-compose.prod.yml) runs the same images from GHCR (ADR 0023).
 name: rydex
 
 x-healthcheck-defaults: &hc
   interval: 10s
   timeout: 5s
   retries: 10
+
+# app containers: read-only root, no Linux capabilities, no privilege gain, scratch space in memory
+x-hardened: &hardened
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  profiles: [app]
+
+x-spring-env: &spring-env
+  DB_HOST: postgres
+  REDIS_HOST: redis
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  # ride-service signs tokens, the others read its public key (ADR 0006)
+  JWT_JWK_SET_URI: http://ride-service:8081/.well-known/jwks.json
+  # behind Caddy: client IPs (rate limits) and https links come from X-Forwarded-*
+  FORWARD_HEADERS_STRATEGY: framework
+  CORS_ALLOWED_ORIGINS: http://localhost:8080,http://localhost:5173
+
+x-spring-deps: &spring-deps
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  kafka-init:
+    condition: service_completed_successfully
+
+x-spring-build: &spring-build
+  context: ..
+  dockerfile: services/Dockerfile
 
 services:
   postgres:
@@ -92,7 +128,133 @@ services:
     entrypoint: ["/bin/bash", "/create-topics.sh"]
     restart: "no"
 
+  ride-service:
+    <<: *hardened
+    build:
+      <<: *spring-build
+      args: { SERVICE: ride-service, PORT: "8081" }
+    image: ghcr.io/boovesh985/rydex-ride-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${RIDE_DB_PASSWORD:-ride_local_pw}
+      AI_BASE_URL: http://ai-service:8085
+      # infra/keys from infra/scripts/gen-jwt-keys.sh; without them an ephemeral key (sign-ins end on restart)
+      JWT_PRIVATE_KEY_LOCATION: file:/keys/jwt-private.pem
+      JWT_PUBLIC_KEY_LOCATION: file:/keys/jwt-public.pem
+    volumes:
+      - ./keys:/keys:ro
+    ports:
+      - "127.0.0.1:8081:8081"
+    mem_limit: 768m
+
+  driver-service:
+    <<: *hardened
+    build:
+      <<: *spring-build
+      args: { SERVICE: driver-service, PORT: "8082" }
+    image: ghcr.io/boovesh985/rydex-driver-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${DRIVER_DB_PASSWORD:-driver_local_pw}
+    ports:
+      - "127.0.0.1:8082:8082"
+    mem_limit: 768m
+
+  tracking-service:
+    <<: *hardened
+    build:
+      <<: *spring-build
+      args: { SERVICE: tracking-service, PORT: "8083" }
+    image: ghcr.io/boovesh985/rydex-tracking-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${TRACKING_DB_PASSWORD:-tracking_local_pw}
+      RIDE_SERVICE_URL: http://ride-service:8081
+      DRIVER_SERVICE_URL: http://driver-service:8082
+    ports:
+      - "127.0.0.1:8083:8083"
+    mem_limit: 768m
+
+  payment-service:
+    <<: *hardened
+    build:
+      <<: *spring-build
+      args: { SERVICE: payment-service, PORT: "8084" }
+    image: ghcr.io/boovesh985/rydex-payment-service:${RYDEX_TAG:-latest}
+    depends_on: *spring-deps
+    environment:
+      <<: *spring-env
+      DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_local_pw}
+      # mock by default; razorpay with test keys in infra/.env (docs/GUIDE.md, Razorpay)
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+    ports:
+      - "127.0.0.1:8084:8084"
+    mem_limit: 768m
+
+  ai-service:
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: ai-service/Dockerfile
+    image: ghcr.io/boovesh985/rydex-ai-service:${RYDEX_TAG:-latest}
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - "127.0.0.1:8085:8085"
+    mem_limit: 512m
+
+  caddy:
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: infra/caddy/Dockerfile
+    image: ghcr.io/boovesh985/rydex-caddy:${RYDEX_TAG:-latest}
+    depends_on: [ride-service, driver-service, tracking-service, payment-service]
+    environment:
+      SITE_ADDRESS: ":80"
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:80"
+    volumes:
+      - caddydata:/data
+      - caddyconfig:/config
+    mem_limit: 128m
+
+  simulator:
+    <<: *hardened
+    profiles: [city]
+    build:
+      context: ..
+      dockerfile: simulator/Dockerfile
+    image: ghcr.io/boovesh985/rydex-simulator:${RYDEX_TAG:-latest}
+    depends_on:
+      caddy:
+        condition: service_healthy
+      ride-service:
+        condition: service_healthy
+      driver-service:
+        condition: service_healthy
+      tracking-service:
+        condition: service_healthy
+    environment:
+      RYDEX_API: http://caddy
+    # every simulated driver goes offline before it exits
+    stop_grace_period: 30s
+    mem_limit: 256m
+
 volumes:
   pgdata:
   redisdata:
   kafkadata:
+  caddydata:
+  caddyconfig:

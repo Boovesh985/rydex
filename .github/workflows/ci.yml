@@ -101,8 +101,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Validate compose file
-        run: docker compose -f infra/docker-compose.yml config -q
+      - name: Validate compose files
+        run: |
+          docker compose -f infra/docker-compose.yml --profile app --profile city config -q
+          # every setting the production file requires, with dummy values
+          sed 's/=$/=ci-dummy/' infra/.env.example > "$RUNNER_TEMP/prod.env"
+          docker compose -f infra/docker-compose.prod.yml --env-file "$RUNNER_TEMP/prod.env" --profile city config -q
+      - name: Validate the Caddyfile
+        run: |
+          docker run --rm -v "$PWD/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine \
+            sh -c 'caddy fmt /etc/caddy/Caddyfile | diff /etc/caddy/Caddyfile - && caddy validate --config /etc/caddy/Caddyfile'
       - name: Lint shell scripts
         run: shellcheck infra/postgres/initdb/*.sh infra/kafka/*.sh
       - uses: docker/setup-qemu-action@v4
@@ -124,6 +132,68 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: docker compose -f infra/docker-compose.yml logs --tail 100
+
+  images:
+    name: Image ${{ matrix.image }} (amd64 + arm64)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: ride-service, file: services/Dockerfile, args: "SERVICE=ride-service\nPORT=8081" }
+          - { image: driver-service, file: services/Dockerfile, args: "SERVICE=driver-service\nPORT=8082" }
+          - { image: tracking-service, file: services/Dockerfile, args: "SERVICE=tracking-service\nPORT=8083" }
+          - { image: payment-service, file: services/Dockerfile, args: "SERVICE=payment-service\nPORT=8084" }
+          - { image: ai-service, file: ai-service/Dockerfile, args: "" }
+          - { image: caddy, file: infra/caddy/Dockerfile, args: "" }
+          - { image: simulator, file: simulator/Dockerfile, args: "" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Build for both platforms (not pushed yet; deploy.yml publishes in Phase 10)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.args }}
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  stack:
+    name: Full stack in containers (memory limits, Caddy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and start every container
+        run: |
+          docker compose -f infra/docker-compose.yml --profile app build
+          docker compose -f infra/docker-compose.yml --profile app up -d --wait --wait-timeout 300
+      - name: Smoke test through the containers (the web app's checks go through Caddy)
+        shell: pwsh
+        run: ./infra/scripts/smoke-test.ps1 -FrontendUrl http://localhost:8080
+      - name: Caddy serves the web app with its headers and keeps internal endpoints in
+        run: |
+          curl -fsS -D - -o /dev/null http://localhost:8080/ | tee headers.txt
+          grep -qi '^content-security-policy:' headers.txt
+          grep -qi '^x-frame-options: DENY' headers.txt
+          curl -fsS http://localhost:8080/rides/123 | grep -q '<div id="root">'
+          ! curl -fsS http://localhost:8080/actuator/health | grep -q '"status"'
+          ! curl -fsS http://localhost:8080/v3/api-docs | grep -q openapi
+      - name: Memory under the limits, nothing killed
+        run: |
+          docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.CPUPerc}}'
+          for c in $(docker compose -f infra/docker-compose.yml --profile app ps -q); do
+            name=$(docker inspect -f '{{.Name}}' "$c")
+            test "$(docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' "$c")" = "false 0" || { echo "$name was killed or restarted"; exit 1; }
+            user=$(docker inspect -f '{{.Config.User}}' "$c")
+            echo "$name runs as ${user:-root}"
+          done
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f infra/docker-compose.yml --profile app logs --tail 120
 
   e2e:
     name: End-to-end (services + Kafka)

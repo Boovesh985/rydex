@@ -1,0 +1,25 @@
+# Build contexts are the repo root (services/Dockerfile, ai-service/Dockerfile, infra/caddy/Dockerfile).
+# Never send secrets or build output into an image.
+.git
+.github
+.claude
+.cache
+.idea
+.vscode
+**/.env
+**/.env.*
+!**/.env.example
+infra/keys
+infra/.env
+infra/postgres
+**/target
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/__pycache__
+**/.pytest_cache
+**/.venv
+docs
+**/Dockerfile

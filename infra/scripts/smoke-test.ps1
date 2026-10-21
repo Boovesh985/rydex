@@ -606,9 +606,17 @@ if ($aiHealth) {
     $info = Invoke-RestMethod -Uri "$AiUrl/model/info" -TimeoutSec 5
     Check "ai-service has a trained model that beats a constant guess" ($info.wait.mae -gt 0 -and $info.wait.mae -lt $info.wait.baselineMae) `
         ("model {0}: wait MAE {1} min (constant guess {2}), live features {3}" -f $info.version, $info.wait.mae, $info.wait.baselineMae, $info.liveFeatures)
+    # an estimate waits 300 ms at most for ai-service: just after the whole stack starts (every JVM still
+    # compiling) one can miss it and go out without a suggestion, by design. Allow two more tries.
+    $tries = 1
+    while (-not $aiEst.Body.suggestion -and $tries -lt 3) {
+        Start-Sleep -Seconds 2
+        $tries++
+        $aiEst = Api POST "$RideUrl/api/rides/estimate" $rider @{ pickup = $center; drop = $airport }
+    }
     $sug = $aiEst.Body.suggestion
     Check "the estimate carries a smart suggestion" ($aiEst.Status -eq 200 -and $sug.suggestionId -and $sug.recommendedRideType) `
-        "$($sug.recommendedRideType), $($sug.bestPickupTime.predictedWaitMin) min, Rs $($sug.bestPickupTime.predictedFare): $(@($sug.reasons)[0])"
+        "$($sug.recommendedRideType), $($sug.bestPickupTime.predictedWaitMin) min, Rs $($sug.bestPickupTime.predictedFare): $(@($sug.reasons)[0])$(if ($tries -gt 1) { "; estimate $tries of 3" })"
     if ($sug.suggestionId) {
         $statsBefore = (Api GET "$RideUrl/api/admin/stats?hours=1" $admin).Body
         $withIt = Api POST "$RideUrl/api/rides" $rider @{ pickup = $center; drop = $airport; rideType = $sug.recommendedRideType; suggestionId = $sug.suggestionId } @{ "Idempotency-Key" = [guid]::NewGuid().ToString() }
