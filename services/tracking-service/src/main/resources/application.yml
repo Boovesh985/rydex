@@ -101,6 +101,8 @@ rydex:
   tracking:
     # one stored point per driver per interval while on a trip (driver_location_history)
     history-interval: 5s
+    # trip paths are deleted after this (the city stores ~500,000 points a day)
+    history-retention: ${HISTORY_RETENTION:30d}
     # how long an OSRM ETA is reused (counting down) before it is asked again
     eta-refresh: 20s
   routing:
