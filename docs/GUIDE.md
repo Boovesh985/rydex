@@ -9,6 +9,7 @@ A tour of what runs locally, how to try it, and how to configure it. For setup, 
 - [Realistic 3D](#realistic-3d)
 - [Payments](#payments)
 - [Smart suggestions (AI)](#smart-suggestions-ai)
+- [Everything in containers](#everything-in-containers)
 - [Checking that it works](#checking-that-it-works)
 - [Security and secrets](#security-and-secrets)
 - [Local addresses](#local-addresses)
@@ -123,15 +124,25 @@ How it works (ADR 22):
   - `python -m training.train` retrains the models;
   - `python -m pytest` runs the tests.
 
+## Everything in containers
+
+The whole stack also runs in Docker, the way the server runs it (ADR 23, [runbook](runbook.md)): five services, Caddy in front with the web app built in, and optionally the living city.
+
+```bash
+docker compose -f infra/docker-compose.yml --profile app --profile city up -d --build
+```
+
+Open `http://localhost:8080`. Caddy sends `/api/*` to each service by path prefix (the same table as the Vite proxy) and `/ws` to tracking-service. Every container runs as a non-root user on a read-only filesystem under a memory limit. The runbook has the memory budget and the production compose file.
+
 ## Checking that it works
 
-With the infrastructure and the four services running, the smoke test prints PASS/FAIL per check:
+With the infrastructure and the four services running (on the host or in containers), the smoke test prints PASS/FAIL per check:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra\scripts\smoke-test.ps1
 ```
 
-It runs a full ride across the services over Kafka (book, offer, accept, arrive, OTP start, complete), the same ride live over WebSockets (the offer pushed to the driver, accepted over the socket, notifications and the driver's position streamed to the rider), and payments (the fare charged, a late cancellation fee, an admin refund), then what the web app reads (driver card, routes, admin KPIs) and, if the dev server runs, its proxy to every service. With ai-service running it checks the smart suggestion (shown, booked with, dismissed); without it, that estimates still work. In Razorpay test mode, add `-PayInBrowser`: it opens the test checkout to pay the cancellation fee, then refunds it.
+It runs a full ride across the services over Kafka (book, offer, accept, arrive, OTP start, complete), the same ride live over WebSockets (the offer pushed to the driver, accepted over the socket, notifications and the driver's position streamed to the rider), and payments (the fare charged, a late cancellation fee, an admin refund), then what the web app reads (driver card, routes, admin KPIs) and, if the dev server runs, its proxy to every service (`-FrontendUrl http://localhost:8080` checks Caddy's instead). With ai-service running it checks the smart suggestion (shown, booked with, dismissed); without it, that estimates still work. In Razorpay test mode, add `-PayInBrowser`: it opens the test checkout to pay the cancellation fee, then refunds it.
 
 Stop the simulator first: its cruising drivers can win the smoke test's offers.
 
@@ -169,6 +180,7 @@ Back up `PII_DATA_KEY` with the database: without it the stored emails and phone
 | payment-service | `http://localhost:8084/swagger-ui` |
 | ai-service (internal) | `http://localhost:8085/docs`, `/model/info` |
 | Web app (Vite dev server) | `http://localhost:5173` |
+| Web app and API through Caddy (containers, `--profile app`) | `http://localhost:8080` |
 
 ## Troubleshooting
 
@@ -177,6 +189,10 @@ Back up `PII_DATA_KEY` with the database: without it the stored emails and phone
 ```powershell
 Get-Content infra\postgres\initdb\01-init.sh -Raw | docker compose -f infra/docker-compose.yml exec -T postgres bash -s
 ```
+
+**ride-service in a container cannot read the JWT key (Linux).** `gen-jwt-keys.sh` makes the private key readable by you only, and the containers run as uid 10001. Let that user read it too, so services on the host still can: `setfacl -m u:10001:r infra/keys/jwt-private.pem` (Docker Desktop on Windows and macOS does not need this).
+
+**Port 8081 already in use when starting the containers.** The services are still running on the host: stop them first; the containers replace them (`npm run dev` works against either).
 
 **8 GB of RAM.** Running the four services and `mvnw verify` at once can run out of memory: stop the services before a full build.
 

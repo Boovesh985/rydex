@@ -22,10 +22,10 @@
 
 Rydex is a ride-hailing platform in the spirit of Uber and Ola, set in Chennai: riders book bikes, autos and cabs, drivers get offers and drive the trip, and operations watch the whole city live. Four Spring Boot services talk over Kafka with a transactional outbox, and live positions travel over WebSockets. A Python AI service suggests the best ride, time and pickup spot, and a Python simulator fills the city with automated drivers and riders who book, drive, pay and rate on their own.
 
-Everything runs locally with Docker, and the deployment plan uses free tiers only (Oracle Cloud Always Free, Vercel, DuckDNS).
+Everything runs in Docker: hardened multi-arch images behind a Caddy edge, one command locally and the same images in production. The deployment plan uses free tiers only (Oracle Cloud Always Free, Vercel, DuckDNS).
 
 > [!NOTE]
-> Work in progress: phases 0–7 of the [build plan](docs/MASTER_PROMPT.md) are done. Next up are production hardening, observability and the public deployment (see the [roadmap](#roadmap)).
+> Work in progress: phases 0–8 of the [build plan](docs/MASTER_PROMPT.md) are done. Next up are observability and the public deployment (see the [roadmap](#roadmap)).
 
 ## Features
 
@@ -61,6 +61,7 @@ Everything runs locally with Docker, and the deployment plan uses free tiers onl
 - Transactional outbox, idempotent consumers, retries and dead-letter topics; stuck and abandoned rides are recovered.
 - Emails and phone numbers encrypted at rest (AES-256-GCM), Argon2id passwords, RS256 tokens with rotating refresh, account lockout.
 - Payments through a mock provider or Razorpay test mode, with late-cancellation fees and refunds.
+- Seven amd64 + arm64 images that run as non-root on read-only filesystems with no Linux capabilities, under memory limits. Caddy is the only public door: automatic HTTPS, routing by path, and the web app.
 
 <table>
   <tr>
@@ -79,6 +80,7 @@ Everything runs locally with Docker, and the deployment plan uses free tiers onl
 flowchart TB
     web["Web app<br/>React · MapLibre · three.js"]
     sim["Simulator<br/>NPC drivers + riders"]
+    caddy["Caddy<br/>HTTPS · routes by path · serves the web app"]
     ai["ai-service :8085<br/>FastAPI · LightGBM suggestions"]
 
     subgraph services["Spring Boot services"]
@@ -94,8 +96,9 @@ flowchart TB
     redis[("Redis<br/>GEO index · presence · pub/sub")]
     rzp["Razorpay<br/>test mode"]
 
-    web -- "REST /api · WebSocket /ws" --> services
-    sim -- "REST · WebSocket" --> services
+    web -- "REST /api · WebSocket /ws" --> caddy
+    sim -- "REST · WebSocket" --> caddy
+    caddy --> services
     services <-- "events (outbox, idempotent consumers)" --> kafka
     services --> pg
     services --> redis
@@ -116,10 +119,17 @@ A booking flows `RIDE_REQUESTED → DRIVER_ASSIGNED → DRIVER_ARRIVED → IN_PR
 | Simulator | Python 3.12 asyncio, OSRM routes |
 | Testing | JUnit 5 + Testcontainers, Vitest + Testing Library, Playwright, pytest, a PowerShell smoke test |
 | Maps | OpenStreetMap data, OpenFreeMap vector tiles, OSRM routing, Nominatim search |
+| Containers | Docker Compose, multi-arch images (amd64 + arm64), Caddy 2 |
 
 ## Getting started
 
-**Prerequisites:** Docker, JDK 21, Node.js 22.12+ and Python 3.12+. Maven is not needed; use the wrapper.
+**Quick start, Docker only.** This builds and starts everything, the living city included; then open `http://localhost:8080`:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile app --profile city up -d --build
+```
+
+**For development:** Docker, JDK 21, Node.js 22.12+ and Python 3.12+. Maven is not needed; use the wrapper.
 
 ```bash
 # 1. Infrastructure: Postgres + PostGIS, Redis and Kafka (topics are created automatically)
@@ -170,7 +180,7 @@ The [guide](docs/GUIDE.md) covers the full tour, Razorpay test mode, the smoke t
 | AI service: engine, features, models, API | `cd ai-service && python -m pytest` |
 | End to end, with the services running | `powershell -File infra/scripts/smoke-test.ps1`, then `cd frontend && npm run e2e` |
 
-[CI](.github/workflows/ci.yml) runs all of them on every push, the end-to-end tests against the full stack.
+[CI](.github/workflows/ci.yml) runs all of them on every push. It builds every image for amd64 and arm64, and runs the end-to-end tests twice: against services on the host, and against the containerised stack through Caddy.
 
 ## Project layout
 
@@ -183,8 +193,8 @@ frontend/             React web app: rider, driver and admin screens
 simulator/            the living city: automated drivers and riders (Python asyncio)
 ai-service/           smart ride suggestions: FastAPI, LightGBM, training on synthetic data
 contracts/            JSON Schemas for the Kafka events and the AI suggestions, the WebSocket (STOMP) API
-infra/                Docker Compose, the PostGIS image, scripts, the smoke test
-docs/                 the guide, the build plan and architecture decision records
+infra/                Docker Compose (local + production), Caddy, the PostGIS image, scripts, the smoke test
+docs/                 the guide, the runbook, the build plan and architecture decision records
 ```
 
 ## Roadmap
@@ -194,7 +204,7 @@ docs/                 the guide, the build plan and architecture decision record
 - [x] **6** Web app (rider, driver, admin), simulator, end-to-end tests
 - [x] Beyond the plan: security hardening, the realistic 3D mode, the living city, ride types, ride-along, free upgrades, ratings
 - [x] **7** AI ride suggestions (FastAPI + LightGBM, live Kafka features, feedback log)
-- [ ] **8** Production Docker images, Caddy, memory limits
+- [x] **8** Hardened multi-arch images, production compose, Caddy edge, memory limits
 - [ ] **9** Observability: Sentry, Prometheus, Grafana
 - [ ] **10** Deployment: Oracle Cloud Always Free, HTTPS, Vercel, continuous delivery
 - [ ] **11** Load tests (k6) and a performance report
