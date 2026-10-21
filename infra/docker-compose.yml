@@ -66,6 +66,8 @@ services:
       <<: *hc
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d rydex"]
     mem_limit: 1g
+    # back after a reboot along with the app containers, which need it
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -79,6 +81,8 @@ services:
       <<: *hc
       test: ["CMD", "redis-cli", "ping"]
     mem_limit: 256m
+    # back after a reboot along with the app containers, which need it
+    restart: unless-stopped
 
   kafka:
     image: apache/kafka:4.3.1
@@ -115,6 +119,8 @@ services:
       test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx64m /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 > /dev/null 2>&1"]
       start_period: 30s
     mem_limit: 1g
+    # back after a reboot along with the app containers, which need it
+    restart: unless-stopped
 
   kafka-init:
     image: apache/kafka:4.3.1
